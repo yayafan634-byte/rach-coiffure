@@ -51,7 +51,7 @@ class AuthProvider extends ChangeNotifier {
     await db.insert(
         'users',
         AppUser(
-          nom: 'Administrateur',
+          nom: 'Issiaka',
           telephone: '0000',
           motDePasseHash: hashPassword('admin123'),
           role: 'admin',

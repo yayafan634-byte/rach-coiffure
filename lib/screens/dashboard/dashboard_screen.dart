@@ -220,7 +220,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           _MenuItem(icon: Icons.point_of_sale_rounded, label: 'Caisse', subtitle: 'Encaisser une vente', color: AppColors.emerald, onTap: () => _ouvrir(const CaisseScreen())),
                           _MenuItem(icon: Icons.calendar_month_rounded, label: 'Rendez-vous', subtitle: 'Agenda du salon', color: AppColors.violet, onTap: () => _ouvrir(const RdvScreen())),
                           if (estAdmin) _MenuItem(icon: Icons.bar_chart_rounded, label: 'Statistiques', subtitle: 'Ventes, marges & top', color: AppColors.cyan, onTap: () => _ouvrir(const StatsScreen())),
-                          if (estAdmin) _MenuItem(icon: Icons.manage_accounts_rounded, label: 'Utilisateurs', subtitle: 'Comptes du personnel', color: AppColors.amber, onTap: () => _ouvrir(const GestionUsersScreen())),
+                          if (estAdmin) _MenuItem(icon: Icons.manage_accounts_rounded, label: 'Utilisateurs & Actions', subtitle: 'Gérer gestionnaires et voir leurs actions', color: AppColors.amber, onTap: () => _ouvrir(const GestionUsersScreen())),
                         ];
                         return GridView.count(
                           crossAxisCount: cols,
@@ -262,10 +262,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Accès Administrateur', style: TextStyle(color: AppColors.slate900, fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
-                                SizedBox(height: 2),
-                                Text('Statistiques & gestion des utilisateurs disponibles', style: TextStyle(color: AppColors.slate500, fontSize: 13)),
-                              ],
+                        Text('Accès Administrateur - Issiaka', style: TextStyle(color: AppColors.slate900, fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+                        SizedBox(height: 2),
+                        Text('Statistiques, utilisateurs & actions du gestionnaire', style: TextStyle(color: AppColors.slate500, fontSize: 13)),
+                      ],
                                 ),
                               ),
                             ],

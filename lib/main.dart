@@ -20,7 +20,7 @@ class MyApp extends StatelessWidget {
     return ChangeNotifierProvider.value(
       value: auth,
       child: MaterialApp(
-        title: 'Salon Perruques BF',
+        title: 'Rach Coiffure',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         home: const LoginScreen(),

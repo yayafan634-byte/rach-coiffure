@@ -110,12 +110,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 20),
                         const Text(
-                          'Salon Perruques BF',
+                          'Rach Coiffure',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.4,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
                             color: AppColors.plum,
                           ),
                         ),
