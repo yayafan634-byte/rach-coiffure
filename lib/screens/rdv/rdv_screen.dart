@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
+import '../../auth/acces_refuse.dart';
 import '../../auth/auth_provider.dart';
 import '../../database/db_helper.dart';
 import '../../models/client.dart';
 import '../../models/rendez_vous.dart';
+import '../../navigation/app_section.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format.dart';
+import '../../utils/id.dart';
+import '../../utils/journal.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_shell.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/section_header.dart';
+import '../../widgets/status_pill.dart';
 import '../clients/clients_screen.dart';
 
 class RdvScreen extends StatefulWidget {
@@ -33,21 +41,33 @@ class _RdvScreenState extends State<RdvScreen> {
   }
 
   Future<void> _charger() async {
-    final db = await DbHelper.instance.db;
-    final rdvRes = await db.query('rendezVous', orderBy: 'dateHeure');
-    final clientRes = await db.query('clients', orderBy: 'nom');
-    if (!mounted) return;
-    setState(() {
-      _rdvs = rdvRes.map(RendezVous.fromMap).toList();
-      _clients = clientRes.map(Client.fromMap).toList();
-      _chargement = false;
-    });
+    try {
+      final db = await DbHelper.instance.db;
+      final rdvRes = await db.query('rendezVous', orderBy: 'dateHeure');
+      final clientRes = await db.query('clients', orderBy: 'nom');
+      if (!mounted) return;
+      setState(() {
+        _rdvs = rdvRes.map(RendezVous.fromMap).toList();
+        _clients = clientRes.map(Client.fromMap).toList();
+        _chargement = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _chargement = false);
+      showAppSnack(
+        context,
+        'Impossible de charger les rendez-vous.',
+        type: AppSnackType.error,
+      );
+    }
   }
 
   Future<void> _ajouter() async {
     if (_clients.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Ajoutez d\'abord un client.'),
+      showAppSnack(
+        context,
+        'Ajoutez d\'abord un client au répertoire.',
+        type: AppSnackType.info,
         action: SnackBarAction(
           label: 'Clients',
           textColor: Colors.white,
@@ -58,70 +78,50 @@ class _RdvScreenState extends State<RdvScreen> {
             _charger();
           },
         ),
-      ));
+      );
       return;
     }
 
-    int clientId = _clients.first.id!;
-    DateTime date = DateTime.now();
+    var clientId = _clients.first.id!;
+    var date = DateTime.now().add(const Duration(hours: 1));
     final noteCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    var enregistrement = false;
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          child: Form(
-            key: formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Nouveau rendez-vous',
-                        style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.plum,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Fermer',
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const Text(
-                  'Planifiez un rendez-vous pour un client.',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
-                ),
-                const SizedBox(height: 18),
-                DropdownButtonFormField<int>(
-                  initialValue: clientId,
-                  items: _clients
-                      .map((c) =>
-                          DropdownMenuItem(value: c.id, child: Text(c.nom)))
-                      .toList(),
-                  onChanged: (v) => clientId = v!,
-                  decoration: const InputDecoration(
-                    labelText: 'Client',
-                    prefixIcon: Icon(Icons.person_outline_rounded),
+    final cree = await showAppSheet<bool>(
+      context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Form(
+              key: formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SheetHeader(
+                    title: 'Nouveau rendez-vous',
+                    subtitle: 'Planifiez un rendez-vous pour un client.',
                   ),
-                ),
-                const SizedBox(height: 12),
-                StatefulBuilder(
-                  builder: (ctx, setSheet) => Material(
+                  const SizedBox(height: 18),
+                  DropdownButtonFormField<int>(
+                    initialValue: clientId,
+                    items: _clients
+                        .map((c) =>
+                            DropdownMenuItem(value: c.id, child: Text(c.nom)))
+                        .toList(),
+                    onChanged: (v) => clientId = v!,
+                    decoration: const InputDecoration(
+                      labelText: 'Client',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Material(
                     color: AppColors.surface,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -131,8 +131,10 @@ class _RdvScreenState extends State<RdvScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      leading: const Icon(Icons.calendar_month_outlined,
-                          color: AppColors.rose),
+                      leading: const Icon(
+                        Icons.calendar_month_outlined,
+                        color: AppColors.rose,
+                      ),
                       title: const Text(
                         'Date et heure',
                         style: TextStyle(
@@ -154,8 +156,8 @@ class _RdvScreenState extends State<RdvScreen> {
                           context: ctx,
                           initialDate: date,
                           firstDate: DateTime.now(),
-                          lastDate: DateTime.now()
-                              .add(const Duration(days: 365)),
+                          lastDate:
+                              DateTime.now().add(const Duration(days: 365)),
                         );
                         if (d == null || !ctx.mounted) return;
                         final t = await showTimePicker(
@@ -165,71 +167,159 @@ class _RdvScreenState extends State<RdvScreen> {
                         if (t == null) return;
                         setSheet(() {
                           date = DateTime(
-                              d.year, d.month, d.day, t.hour, t.minute);
+                            d.year,
+                            d.month,
+                            d.day,
+                            t.hour,
+                            t.minute,
+                          );
                         });
                       },
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: noteCtrl,
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Note (optionnel)',
-                    prefixIcon: Icon(Icons.notes_rounded),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: noteCtrl,
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Note (optionnel)',
+                      prefixIcon: Icon(Icons.notes_rounded),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: () async {
-                      final db = await DbHelper.instance.db;
-                      await db.insert(
-                        'rendezVous',
-                        RendezVous(
-                          clientId: clientId,
-                          dateHeure: date,
-                          note: noteCtrl.text.trim().isEmpty
-                              ? null
-                              : noteCtrl.text.trim(),
-                        ).toMap(),
-                      );
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      _charger();
-                    },
-                    icon: const Icon(Icons.event_available_rounded, size: 20),
-                    label: const Text('Enregistrer le rendez-vous'),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: enregistrement
+                          ? null
+                          : () async {
+                              if (date.isBefore(DateTime.now())) {
+                                showAppSnack(
+                                  ctx,
+                                  'Choisissez une date et une heure à venir.',
+                                  type: AppSnackType.error,
+                                );
+                                return;
+                              }
+                              setSheet(() => enregistrement = true);
+                              try {
+                                final db = await DbHelper.instance.db;
+                                await db.insert(
+                                  'rendezVous',
+                                  RendezVous(
+                                    id: nouvelId(),
+                                    clientId: clientId,
+                                    dateHeure: date,
+                                    note: noteCtrl.text.trim().isEmpty
+                                        ? null
+                                        : noteCtrl.text.trim(),
+                                  ).toMap(),
+                                );
+                              } catch (_) {
+                                if (!ctx.mounted) return;
+                                setSheet(() => enregistrement = false);
+                                showAppSnack(
+                                  ctx,
+                                  'Impossible d\'enregistrer le rendez-vous.',
+                                  type: AppSnackType.error,
+                                );
+                                return;
+                              }
+                              if (!ctx.mounted) return;
+                              await journaliser(
+                                ctx,
+                                'Rendez-vous créé',
+                                details:
+                                    '${_nomClient(clientId)} • ${formatDateHeure(date)}',
+                              );
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx, true);
+                            },
+                      icon: enregistrement
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.event_available_rounded,
+                              size: 20,
+                            ),
+                      label: Text(
+                        enregistrement
+                            ? 'Enregistrement...'
+                            : 'Enregistrer le rendez-vous',
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
+    noteCtrl.dispose();
+    if (cree == true) {
+      _charger();
+      if (mounted) {
+        showAppSnack(
+          context,
+          'Rendez-vous enregistré.',
+          type: AppSnackType.success,
+        );
+      }
+    }
   }
 
   Future<void> _changerStatut(RendezVous r, String statut) async {
-    final db = await DbHelper.instance.db;
-    await db.update(
-      'rendezVous',
-      {'statut': statut},
-      where: 'id = ?',
-      whereArgs: [r.id],
-    );
-    await _charger();
+    try {
+      final db = await DbHelper.instance.db;
+      await db.update(
+        'rendezVous',
+        {'statut': statut},
+        where: 'id = ?',
+        whereArgs: [r.id],
+      );
+      if (!mounted) return;
+      await journaliser(
+        context,
+        'Rendez-vous $statut',
+        details: '${_nomClient(r.clientId)} • ${formatDateHeure(r.dateHeure)}',
+      );
+      await _charger();
+      if (mounted) {
+        showAppSnack(
+          context,
+          statut == 'terminé'
+              ? 'Rendez-vous marqué terminé.'
+              : statut == 'annulé'
+                  ? 'Rendez-vous annulé.'
+                  : 'Rendez-vous remis en prévu.',
+          type: AppSnackType.success,
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        'Impossible de mettre à jour le rendez-vous.',
+        type: AppSnackType.error,
+      );
+    }
   }
 
   Future<void> _supprimer(RendezVous r) async {
-    if (!context.read<AuthProvider>().isAdmin) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Suppression réservée à l\'administrateur.'),
-        backgroundColor: AppColors.danger,
-      ));
+    if (!context.read<AuthProvider>().peut('suppressions')) {
+      showAppSnack(
+        context,
+        'Suppression non autorisée pour ce compte.',
+        type: AppSnackType.error,
+      );
       return;
     }
     final confirmer = await showDialog<bool>(
@@ -253,9 +343,31 @@ class _RdvScreenState extends State<RdvScreen> {
     );
     if (confirmer != true) return;
 
-    final db = await DbHelper.instance.db;
-    await db.delete('rendezVous', where: 'id = ?', whereArgs: [r.id]);
-    await _charger();
+    try {
+      final db = await DbHelper.instance.db;
+      await db.delete('rendezVous', where: 'id = ?', whereArgs: [r.id]);
+      if (!mounted) return;
+      await journaliser(
+        context,
+        'Rendez-vous supprimé',
+        details: '${_nomClient(r.clientId)} • ${formatDateHeure(r.dateHeure)}',
+      );
+      await _charger();
+      if (mounted) {
+        showAppSnack(
+          context,
+          'Rendez-vous supprimé.',
+          type: AppSnackType.success,
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        'Impossible de supprimer le rendez-vous.',
+        type: AppSnackType.error,
+      );
+    }
   }
 
   String _nomClient(int id) {
@@ -267,13 +379,19 @@ class _RdvScreenState extends State<RdvScreen> {
     final debut = DateTime(day.year, day.month, day.day);
     final fin = debut.add(const Duration(days: 1));
     return _rdvs
-        .where((r) =>
-            !r.dateHeure.isBefore(debut) && r.dateHeure.isBefore(fin))
+        .where((r) => !r.dateHeure.isBefore(debut) && r.dateHeure.isBefore(fin))
         .toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    if (!auth.peut('rdv')) {
+      return const AccesRefuse(
+        message:
+            'La gestion des rendez-vous n\'est pas autorisée pour ce compte.',
+      );
+    }
     final now = DateTime.now();
     final debutJour = DateTime(now.year, now.month, now.day);
     final debutDemain = debutJour.add(const Duration(days: 1));
@@ -283,9 +401,8 @@ class _RdvScreenState extends State<RdvScreen> {
             !r.dateHeure.isBefore(debutJour) &&
             r.dateHeure.isBefore(debutDemain))
         .toList();
-    final aVenir = _rdvs
-        .where((r) => !r.dateHeure.isBefore(debutDemain))
-        .toList();
+    final aVenir =
+        _rdvs.where((r) => !r.dateHeure.isBefore(debutDemain)).toList();
     final passes = _rdvs
         .where((r) => r.dateHeure.isBefore(debutJour))
         .toList()
@@ -293,9 +410,11 @@ class _RdvScreenState extends State<RdvScreen> {
         .toList();
 
     final rdvSelectionnes = _rdvDuJour(_selectedDay);
+    final estAdmin = auth.isAdmin;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Rendez-vous')),
+    return AppShell(
+      section: AppSection.rdv,
+      title: 'Rendez-vous',
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _ajouter,
         icon: const Icon(Icons.add_rounded),
@@ -372,31 +491,31 @@ class _RdvScreenState extends State<RdvScreen> {
                       ),
                       const SizedBox(height: 16),
                       SectionHeader(
-                        title:
-                            'RDV du ${formatDate(_selectedDay)}',
+                        title: 'RDV du ${formatDate(_selectedDay)}',
                       ),
                       const SizedBox(height: 8),
                       if (rdvSelectionnes.isEmpty)
                         _blocVideCalendrier()
                       else
-                        ...rdvSelectionnes.map(_carteRdv),
-                      if (aujourdHui.isNotEmpty && !isSameDay(_selectedDay, now)) ...[
+                        ...rdvSelectionnes.map((r) => _carteRdv(r, estAdmin)),
+                      if (aujourdHui.isNotEmpty &&
+                          !isSameDay(_selectedDay, now)) ...[
                         const SizedBox(height: 18),
                         const SectionHeader(title: "Aujourd'hui"),
                         const SizedBox(height: 8),
-                        ...aujourdHui.map(_carteRdv),
+                        ...aujourdHui.map((r) => _carteRdv(r, estAdmin)),
                       ],
                       if (aVenir.isNotEmpty) ...[
                         const SizedBox(height: 18),
                         const SectionHeader(title: 'À venir'),
                         const SizedBox(height: 8),
-                        ...aVenir.take(5).map(_carteRdv),
+                        ...aVenir.take(5).map((r) => _carteRdv(r, estAdmin)),
                       ],
                       if (passes.isNotEmpty) ...[
                         const SizedBox(height: 18),
                         const SectionHeader(title: 'Passés'),
                         const SizedBox(height: 8),
-                        ...passes.take(10).map(_carteRdv),
+                        ...passes.take(10).map((r) => _carteRdv(r, estAdmin)),
                       ],
                     ],
                   ),
@@ -461,8 +580,7 @@ class _RdvScreenState extends State<RdvScreen> {
     );
   }
 
-  Widget _carteRdv(RendezVous r) {
-    final estAdmin = context.watch<AuthProvider>().isAdmin;
+  Widget _carteRdv(RendezVous r, bool estAdmin) {
     final (accent, fond) = switch (r.statut) {
       'terminé' => (AppColors.success, AppColors.successSoft),
       'annulé' => (AppColors.danger, AppColors.dangerSoft),
@@ -545,22 +663,7 @@ class _RdvScreenState extends State<RdvScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: fond,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    statut,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: accent,
-                    ),
-                  ),
-                ),
+                StatusPill(label: statut, color: accent, background: fond),
                 PopupMenuButton<String>(
                   tooltip: 'Actions',
                   icon: const Icon(Icons.more_vert_rounded,
@@ -606,14 +709,19 @@ class _RdvScreenState extends State<RdvScreen> {
 
   void _actions(RendezVous r) {
     final estAdmin = context.read<AuthProvider>().isAdmin;
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
+    showAppSheet<void>(
+      context,
       builder: (ctx) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            SheetHeader(
+              title: _nomClient(r.clientId),
+              subtitle:
+                  '${formatDateHeure(r.dateHeure)} • ${r.statut.isEmpty ? 'Prévu' : r.statut}',
+            ),
+            const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.check_circle_outline,
                   color: AppColors.success),
@@ -642,8 +750,8 @@ class _RdvScreenState extends State<RdvScreen> {
             ),
             if (estAdmin)
               ListTile(
-                leading: const Icon(Icons.delete_outline,
-                    color: AppColors.danger),
+                leading:
+                    const Icon(Icons.delete_outline, color: AppColors.danger),
                 title: const Text(
                   'Supprimer',
                   style: TextStyle(color: AppColors.danger),

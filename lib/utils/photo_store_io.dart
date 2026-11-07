@@ -15,3 +15,11 @@ Future<String> savePickedPhoto(XFile picked) async {
   await File(picked.path).copy(cible.path);
   return cible.path;
 }
+
+Future<void> deletePhoto(String? chemin) async {
+  if (chemin == null || chemin.isEmpty || chemin.startsWith('data:')) return;
+  try {
+    final fichier = File(chemin);
+    if (await fichier.exists()) await fichier.delete();
+  } catch (_) {}
+}

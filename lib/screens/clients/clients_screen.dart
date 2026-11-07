@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../auth/acces_refuse.dart';
+import '../../auth/auth_provider.dart';
 import '../../database/db_helper.dart';
 import '../../models/client.dart';
+import '../../navigation/app_section.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/format.dart';
+import '../../widgets/app_shell.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/initials_avatar.dart';
 import 'client_detail_screen.dart';
+import 'client_form_sheet.dart';
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -42,144 +49,55 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   Future<void> _charger() async {
-    final db = await DbHelper.instance.db;
-    final res = await db.query('clients', orderBy: 'nom');
-    if (!mounted) return;
-    setState(() {
-      _clients = res.map(Client.fromMap).toList();
-      _chargement = false;
-    });
+    try {
+      final db = await DbHelper.instance.db;
+      final res = await db.query('clients', orderBy: 'nom');
+      if (!mounted) return;
+      setState(() {
+        _clients = res.map(Client.fromMap).toList();
+        _chargement = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _chargement = false);
+      showAppSnack(
+        context,
+        'Impossible de charger les clients.',
+        type: AppSnackType.error,
+      );
+    }
   }
 
-  Future<void> _ajouter(Client c) async {
-    final db = await DbHelper.instance.db;
-    await db.insert('clients', c.toMap());
-    await _charger();
-  }
-
-  void _ajouterDialog() {
-    final nomCtrl = TextEditingController();
-    final telCtrl = TextEditingController();
-    final adresseCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          child: Form(
-            key: formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Nouveau client',
-                        style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.plum,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Fermer',
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const Text(
-                  'Ajoutez un client au répertoire du salon.',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
-                ),
-                const SizedBox(height: 18),
-                TextFormField(
-                  controller: nomCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Nom complet',
-                    prefixIcon: Icon(Icons.person_outline_rounded),
-                  ),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Nom requis'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: telCtrl,
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Téléphone',
-                    prefixIcon: Icon(Icons.phone_outlined),
-                  ),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Téléphone requis'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: adresseCtrl,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    labelText: 'Adresse (optionnel)',
-                    prefixIcon: Icon(Icons.location_on_outlined),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      if (!(formKey.currentState?.validate() ?? false)) return;
-                      _ajouter(Client(
-                        nom: nomCtrl.text.trim(),
-                        telephone: telCtrl.text.trim(),
-                        adresse: adresseCtrl.text.trim().isEmpty
-                            ? null
-                            : adresseCtrl.text.trim(),
-                      ));
-                      Navigator.pop(ctx);
-                    },
-                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
-                    label: const Text('Ajouter le client'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  Future<void> _ajouter() async {
+    final ajoute = await showClientFormSheet(context);
+    if (ajoute) _charger();
   }
 
   void _details(Client c) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ClientDetailScreen(client: c)),
-    ).then((_) => _charger());
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(builder: (_) => ClientDetailScreen(client: c)),
+        )
+        .then((_) => _charger());
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtres = _filtres;
-    final totalPoints =
-        _clients.fold<int>(0, (s, c) => s + c.pointsFidelite);
+    final auth = context.watch<AuthProvider>();
+    if (!auth.peut('clients')) {
+      return const AccesRefuse(
+        message: 'La gestion des clients n\'est pas autorisée pour ce compte.',
+      );
+    }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Clients')),
+    final filtres = _filtres;
+    final totalPoints = _clients.fold<int>(0, (s, c) => s + c.pointsFidelite);
+
+    return AppShell(
+      section: AppSection.clients,
+      title: 'Clients',
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _ajouterDialog,
+        onPressed: _ajouter,
         icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text('Client'),
       ),
@@ -221,15 +139,20 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     color: AppColors.muted,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 10),
                 const Icon(Icons.stars_rounded,
                     size: 16, color: AppColors.gold),
                 const SizedBox(width: 4),
-                Text(
-                  '$totalPoints pts cumulés',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.muted,
+                Expanded(
+                  child: Text(
+                    '$totalPoints pts cumulés',
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.muted,
+                    ),
                   ),
                 ),
               ],
@@ -245,7 +168,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                         message:
                             'Ajoutez votre premier client pour suivre ses visites et sa fidélité.',
                         actionLabel: 'Ajouter un client',
-                        onAction: _ajouterDialog,
+                        onAction: _ajouter,
                       )
                     : filtres.isEmpty
                         ? EmptyState(
@@ -263,13 +186,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
                             onRefresh: _charger,
                             color: AppColors.rose,
                             child: ListView.builder(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                              physics:
-                                  const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                              physics: const AlwaysScrollableScrollPhysics(),
                               itemCount: filtres.length,
-                              itemBuilder: (ctx, i) =>
-                                  _carteClient(filtres[i]),
+                              itemBuilder: (ctx, i) => _carteClient(filtres[i]),
                             ),
                           ),
           ),
@@ -294,7 +214,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                _avatar(c, 42),
+                InitialsAvatar(name: c.nom, size: 42),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -353,33 +273,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _avatar(Client c, double taille) {
-    final palettes = [
-      (AppColors.roseDeep, AppColors.roseSoft),
-      (AppColors.gold, AppColors.goldSoft),
-      (AppColors.success, AppColors.successSoft),
-      (const Color(0xFF5F7A9B), const Color(0xFFE7EEF6)),
-      (const Color(0xFF6A4C93), const Color(0xFFEFE8F7)),
-    ];
-    final index = c.nom.isEmpty ? 0 : c.nom.codeUnitAt(0) % palettes.length;
-    final (accent, fond) = palettes[index];
-
-    return Container(
-      width: taille,
-      height: taille,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: fond, shape: BoxShape.circle),
-      child: Text(
-        initiales(c.nom),
-        style: TextStyle(
-          fontSize: taille * 0.34,
-          fontWeight: FontWeight.w700,
-          color: accent,
         ),
       ),
     );

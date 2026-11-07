@@ -20,7 +20,9 @@ class StockService {
     final db = await _db;
     return db.transaction<String?>((txn) async {
       final res = await txn.query('perruques',
-          columns: ['quantite', 'nom'], where: 'id = ?', whereArgs: [perruqueId]);
+          columns: ['quantite', 'nom'],
+          where: 'id = ?',
+          whereArgs: [perruqueId]);
       if (res.isEmpty) return 'Article introuvable';
 
       final actuel = res.first['quantite'] as int;
@@ -74,6 +76,7 @@ class StockService {
     required double montant,
     required String modePaiement,
     int? clientId,
+    String? libelle,
   }) async {
     if (quantite <= 0) return 'Quantité invalide';
     if (montant <= 0) return 'Montant invalide';
@@ -105,6 +108,8 @@ class StockService {
         'montant': montant,
         'quantite': quantite,
         'modePaiement': modePaiement,
+        if (libelle != null && libelle.trim().isNotEmpty)
+          'libelle': libelle.trim(),
         'dateVente': DateTime.now().toIso8601String(),
       });
       return null;
@@ -114,9 +119,11 @@ class StockService {
   /// Nombre de ventes référençant cette perruque (pour bloquer la suppression).
   Future<int> ventesLiees(int perruqueId) async {
     final db = await _db;
-    final r = await db.rawQuery(
-        'SELECT COUNT(*) AS n FROM ventes WHERE perruqueId = ?',
-        [perruqueId]);
+    final r = await db.rawQuery('''
+      SELECT
+        (SELECT COUNT(*) FROM ventes WHERE perruqueId = ?) +
+        (SELECT COUNT(*) FROM venteItems WHERE perruqueId = ?) AS n
+    ''', [perruqueId, perruqueId]);
     return Sqflite.firstIntValue(r) ?? 0;
   }
 }

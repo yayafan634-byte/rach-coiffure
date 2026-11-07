@@ -4,8 +4,11 @@ import '../../database/db_helper.dart';
 import '../../models/perruque.dart';
 import '../../services/stock_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/id.dart';
+import '../../utils/journal.dart';
 import '../../utils/photo_image.dart';
 import '../../utils/photo_store.dart';
+import '../../widgets/app_snack.dart';
 
 class StockFormScreen extends StatefulWidget {
   final Perruque? perruque;
@@ -26,6 +29,8 @@ class _StockFormScreenState extends State<StockFormScreen> {
   late final TextEditingController _quantite;
   late final TextEditingController _prixAchat;
   late final TextEditingController _prixVente;
+  late final TextEditingController _seuil;
+  late final TextEditingController _fournisseur;
   String? _photoPath;
   bool _enregistrement = false;
 
@@ -41,10 +46,12 @@ class _StockFormScreenState extends State<StockFormScreen> {
     _couleur = TextEditingController(text: p?.couleur ?? '');
     _texture = TextEditingController(text: p?.texture ?? '');
     _quantite = TextEditingController(text: '${p?.quantite ?? 1}');
-    _prixAchat = TextEditingController(
-        text: p == null ? '' : _nombre(p.prixAchat));
-    _prixVente = TextEditingController(
-        text: p == null ? '' : _nombre(p.prixVente));
+    _prixAchat =
+        TextEditingController(text: p == null ? '' : _nombre(p.prixAchat));
+    _prixVente =
+        TextEditingController(text: p == null ? '' : _nombre(p.prixVente));
+    _seuil = TextEditingController(text: '${p?.seuilAlerte ?? 3}');
+    _fournisseur = TextEditingController(text: p?.fournisseur ?? '');
     _photoPath = p?.photoPath;
   }
 
@@ -58,6 +65,8 @@ class _StockFormScreenState extends State<StockFormScreen> {
     _quantite.dispose();
     _prixAchat.dispose();
     _prixVente.dispose();
+    _seuil.dispose();
+    _fournisseur.dispose();
     super.dispose();
   }
 
@@ -95,50 +104,85 @@ class _StockFormScreenState extends State<StockFormScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _enregistrement = true);
 
-    final db = await DbHelper.instance.db;
-    final nouvelle = Perruque(
-      id: widget.perruque?.id,
-      nom: _nom.text.trim(),
-      type: _type.text.trim(),
-      longueur: _longueur.text.trim(),
-      couleur: _couleur.text.trim(),
-      texture: _texture.text.trim(),
-      quantite: int.parse(_quantite.text.trim()),
-      prixAchat: _parseMontant(_prixAchat.text)!,
-      prixVente: _parseMontant(_prixVente.text)!,
-      photoPath: _photoPath,
-    );
+    final anciennePhoto = widget.perruque?.photoPath;
 
-    if (!_modification) {
-      final map = nouvelle.toMap();
-      map['quantite'] = 0;
-      final id = await db.insert('perruques', map);
-      if (nouvelle.quantite > 0) {
-        await StockService.instance.entreeStock(
-          perruqueId: id,
-          quantite: nouvelle.quantite,
-          motif: 'Stock initial',
-        );
-      }
-    } else {
-      final ancienne = widget.perruque!;
-      final delta = nouvelle.quantite - ancienne.quantite;
-      await db.update(
-        'perruques',
-        nouvelle.toMap()..['quantite'] = ancienne.quantite,
-        where: 'id = ?',
-        whereArgs: [ancienne.id],
+    try {
+      final db = await DbHelper.instance.db;
+      final nouvelle = Perruque(
+        id: widget.perruque?.id,
+        nom: _nom.text.trim(),
+        type: _type.text.trim(),
+        longueur: _longueur.text.trim(),
+        couleur: _couleur.text.trim(),
+        texture: _texture.text.trim(),
+        quantite: int.parse(_quantite.text.trim()),
+        prixAchat: _parseMontant(_prixAchat.text)!,
+        prixVente: _parseMontant(_prixVente.text)!,
+        photoPath: _photoPath,
+        seuilAlerte: int.parse(_seuil.text.trim()),
+        fournisseur:
+            _fournisseur.text.trim().isEmpty ? null : _fournisseur.text.trim(),
       );
-      if (delta != 0) {
-        await StockService.instance.changerQuantite(
-          perruqueId: ancienne.id!,
-          delta: delta,
-          type: 'ajustement',
-          motif: 'Modification fiche article',
-        );
+
+      if (!_modification) {
+        final map = nouvelle.toMap();
+        map['quantite'] = 0;
+        final id = nouvelId();
+        map['id'] = id;
+        await db.insert('perruques', map);
+        if (nouvelle.quantite > 0) {
+          await StockService.instance.entreeStock(
+            perruqueId: id,
+            quantite: nouvelle.quantite,
+            motif: 'Stock initial',
+          );
+        }
+      } else {
+        final ancienne = widget.perruque!;
+        final delta = nouvelle.quantite - ancienne.quantite;
+        final map = nouvelle.toMap()..remove('id');
+        await db.transaction((txn) async {
+          await txn.update(
+            'perruques',
+            map,
+            where: 'id = ?',
+            whereArgs: [ancienne.id],
+          );
+          if (delta != 0) {
+            await txn.insert(
+              'mouvements_stock',
+              MouvementInsert(
+                perruqueId: ancienne.id!,
+                delta: delta,
+                type: 'ajustement',
+                motif: 'Modification fiche article',
+              ).toMap(),
+            );
+          }
+        });
       }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _enregistrement = false);
+      showAppSnack(
+        context,
+        'Impossible d\'enregistrer l\'article.',
+        type: AppSnackType.error,
+      );
+      return;
     }
 
+    if (!mounted) return;
+    final p = _modification ? widget.perruque! : null;
+    await journaliser(
+      context,
+      _modification ? 'Article modifié' : 'Article ajouté',
+      details: '${_nom.text.trim()} • ${_quantite.text.trim()} en stock'
+          '${p == null ? '' : ' • prix ${_prixVente.text.trim()} FCFA'}',
+    );
+    if (anciennePhoto != null && anciennePhoto != _photoPath) {
+      await deletePhoto(anciennePhoto);
+    }
     if (!mounted) return;
     Navigator.of(context).pop(true);
   }
@@ -210,8 +254,7 @@ class _StockFormScreenState extends State<StockFormScreen> {
                 _prixAchat,
                 'Prix d\'achat (FCFA)',
                 icone: Icons.shopping_bag_outlined,
-                clavier:
-                    const TextInputType.numberWithOptions(decimal: true),
+                clavier: const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
                   final n = _parseMontant(v);
                   if (n == null || n < 0) return 'Prix d\'achat invalide';
@@ -222,8 +265,7 @@ class _StockFormScreenState extends State<StockFormScreen> {
                 _prixVente,
                 'Prix de vente (FCFA)',
                 icone: Icons.sell_outlined,
-                clavier:
-                    const TextInputType.numberWithOptions(decimal: true),
+                clavier: const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
                   final n = _parseMontant(v);
                   if (n == null || n <= 0) return 'Prix de vente invalide';
@@ -233,6 +275,23 @@ class _StockFormScreenState extends State<StockFormScreen> {
                   }
                   return null;
                 },
+              ),
+              _champ(
+                _seuil,
+                'Seuil d\'alerte stock',
+                icone: Icons.notifications_active_outlined,
+                clavier: TextInputType.number,
+                validator: (v) {
+                  final n = int.tryParse(v?.trim() ?? '');
+                  if (n == null || n < 0) return 'Seuil invalide';
+                  return null;
+                },
+              ),
+              _champ(
+                _fournisseur,
+                'Fournisseur (optionnel)',
+                icone: Icons.local_shipping_outlined,
+                majuscule: TextCapitalization.words,
               ),
             ]),
             const SizedBox(height: 12),

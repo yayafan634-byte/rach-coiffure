@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,11 +7,12 @@ class AppColors {
   static const surface = Color(0xFFFFFFFF);
   static const surfaceAlt = Color(0xFFF9FAFB);
 
-  static const primary = Color(0xFFDC2626);
-  static const primarySoft = Color(0xFFFEF2F2);
-
   static const rose = Color(0xFFE11D48);
   static const roseSoft = Color(0xFFFEF2F4);
+  static const roseDeep = Color(0xFFBE123C);
+
+  static const primary = rose;
+  static const primarySoft = roseSoft;
 
   static const blue = Color(0xFF2563EB);
   static const blueSoft = Color(0xFFEFF6FF);
@@ -48,7 +50,6 @@ class AppColors {
   static const cream = background;
   static const gold = amber;
   static const goldSoft = amberSoft;
-  static const roseDeep = Color(0xFFBE123C);
 }
 
 class AppTheme {
@@ -163,20 +164,20 @@ class AppTheme {
           ),
           bodyLarge: const TextStyle(
             fontSize: 15.5,
-            height: 1.4,
-            fontWeight: FontWeight.w600,
+            height: 1.45,
+            fontWeight: FontWeight.w500,
             color: AppColors.slate900,
           ),
           bodyMedium: const TextStyle(
             fontSize: 14,
-            height: 1.4,
-            fontWeight: FontWeight.w600,
+            height: 1.45,
+            fontWeight: FontWeight.w500,
             color: AppColors.slate900,
           ),
           bodySmall: const TextStyle(
             fontSize: 13,
-            height: 1.35,
-            fontWeight: FontWeight.w600,
+            height: 1.4,
+            fontWeight: FontWeight.w500,
             color: AppColors.slate700,
           ),
           labelLarge: const TextStyle(
@@ -362,7 +363,119 @@ class AppTheme {
           ),
         ),
       ),
-      splashFactory: InkSparkle.splashFactory,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: ZoomPageTransitionsBuilder(),
+          TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+          TargetPlatform.linux: ZoomPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: AppColors.rose,
+        selectionColor: AppColors.rose.withValues(alpha: 0.22),
+        selectionHandleColor: AppColors.rose,
+      ),
+      scrollbarTheme: ScrollbarThemeData(
+        thickness: WidgetStateProperty.all(6),
+        radius: const Radius.circular(8),
+        thumbColor: WidgetStateProperty.all(
+          AppColors.slate400.withValues(alpha: 0.55),
+        ),
+      ),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 450),
+        decoration: BoxDecoration(
+          color: AppColors.plum,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        textStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd),
+          side: const BorderSide(color: AppColors.line),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: AppColors.slate900,
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? AppColors.rose
+              : AppColors.surface,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? AppColors.roseSoft
+              : AppColors.slate100,
+        ),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? AppColors.rose
+              : AppColors.line,
+        ),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? AppColors.rose
+              : Colors.transparent,
+        ),
+        checkColor: WidgetStateProperty.all(Colors.white),
+        side: const BorderSide(color: AppColors.line),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(5),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? AppColors.roseSoft
+                : AppColors.surface,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? AppColors.roseDeep
+                : AppColors.slate700,
+          ),
+          side: WidgetStateProperty.all(
+            const BorderSide(color: AppColors.line),
+          ),
+          textStyle: WidgetStateProperty.all(
+            const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          minimumSize: WidgetStateProperty.all(const Size(0, 44)),
+        ),
+      ),
+      datePickerTheme: DatePickerThemeData(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        headerBackgroundColor: AppColors.rose,
+        headerForegroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusXl),
+        ),
+      ),
+      timePickerTheme: TimePickerThemeData(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusXl),
+        ),
+      ),
+      splashFactory: InkRipple.splashFactory,
     );
   }
 }

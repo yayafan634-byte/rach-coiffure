@@ -25,7 +25,7 @@ Future<void> exporterRapportPdf({
               children: [
                 pw.Text(
                   'Salon Perruques BF',
-                  style: pw.TextStyle(
+                  style: const pw.TextStyle(
                     fontSize: 18,
                     fontWeight: pw.FontWeight.bold,
                   ),
@@ -51,7 +51,7 @@ Future<void> exporterRapportPdf({
         pw.TableHelper.fromTextArray(
           headers: entetes,
           data: lignes,
-          headerStyle: pw.TextStyle(
+          headerStyle: const pw.TextStyle(
             fontWeight: pw.FontWeight.bold,
             fontSize: 9,
           ),
@@ -78,6 +78,7 @@ Future<void> exporterRapportPdf({
 
   await Printing.layoutPdf(
     onLayout: (format) async => pdf.save(),
-    name: '${titre.replaceAll(' ', '_')}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
+    name:
+        '${titre.replaceAll(' ', '_')}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf',
   );
 }

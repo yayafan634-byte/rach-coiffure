@@ -3,6 +3,8 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  app_links
+  audioplayers_windows
   file_selector_windows
   printing
   share_plus

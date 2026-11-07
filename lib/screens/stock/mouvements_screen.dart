@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../../auth/auth_provider.dart';
 import '../../database/db_helper.dart';
 import '../../models/mouvement_stock.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/export_pdf.dart';
+import '../../utils/journal.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
 
 class MouvementsScreen extends StatefulWidget {
@@ -25,21 +29,39 @@ class _MouvementsScreenState extends State<MouvementsScreen> {
   }
 
   Future<void> _charger() async {
-    final db = await DbHelper.instance.db;
-    final res = await db.rawQuery('''
-      SELECT m.*, p.nom AS nomPerruque
-      FROM mouvements_stock m
-      LEFT JOIN perruques p ON p.id = m.perruqueId
-      ORDER BY m.date DESC
-    ''');
-    if (!mounted) return;
-    setState(() {
-      _mouvements = res.map(MouvementStock.fromMap).toList();
-      _chargement = false;
-    });
+    try {
+      final db = await DbHelper.instance.db;
+      final res = await db.rawQuery('''
+        SELECT m.*, p.nom AS nomPerruque
+        FROM mouvements_stock m
+        LEFT JOIN perruques p ON p.id = m.perruqueId
+        ORDER BY m.date DESC
+      ''');
+      if (!mounted) return;
+      setState(() {
+        _mouvements = res.map(MouvementStock.fromMap).toList();
+        _chargement = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _chargement = false);
+      showAppSnack(
+        context,
+        'Impossible de charger l\'historique du stock.',
+        type: AppSnackType.error,
+      );
+    }
   }
 
   Future<void> _exporterPdf() async {
+    if (!context.read<AuthProvider>().peut('exports')) {
+      showAppSnack(
+        context,
+        'Export non autorisé pour ce compte.',
+        type: AppSnackType.error,
+      );
+      return;
+    }
     final lignes = _mouvements
         .map((m) => [
               _fmt.format(m.date),
@@ -51,9 +73,16 @@ class _MouvementsScreenState extends State<MouvementsScreen> {
         .toList();
     await exporterRapportPdf(
       titre: 'Historique mouvements stock',
-      sousTitre: 'Entrées: +${_mouvements.where((m) => m.delta > 0).fold<int>(0, (s, m) => s + m.delta)} | Sorties: ${_mouvements.where((m) => m.delta < 0).fold<int>(0, (s, m) => s + m.delta.abs())}',
+      sousTitre:
+          'Entrées: +${_mouvements.where((m) => m.delta > 0).fold<int>(0, (s, m) => s + m.delta)} | Sorties: ${_mouvements.where((m) => m.delta < 0).fold<int>(0, (s, m) => s + m.delta.abs())}',
       entetes: const ['Date/Heure', 'Article', 'Type', 'Qté', 'Motif'],
       lignes: lignes,
+    );
+    if (!mounted) return;
+    await journaliser(
+      context,
+      'Export des mouvements de stock',
+      details: '${_mouvements.length} mouvement(s) exporté(s) en PDF',
     );
   }
 
@@ -84,8 +113,7 @@ class _MouvementsScreenState extends State<MouvementsScreen> {
               ? const EmptyState(
                   icon: Icons.history_rounded,
                   title: 'Aucun mouvement',
-                  message:
-                      'Les entrées et sorties de stock apparaîtront ici.',
+                  message: 'Les entrées et sorties de stock apparaîtront ici.',
                 )
               : Column(
                   children: [
@@ -121,10 +149,8 @@ class _MouvementsScreenState extends State<MouvementsScreen> {
                         onRefresh: _charger,
                         color: AppColors.rose,
                         child: ListView.builder(
-                          padding:
-                              const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                          physics:
-                              const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                          physics: const AlwaysScrollableScrollPhysics(),
                           itemCount: _mouvements.length,
                           itemBuilder: (ctx, i) =>
                               _carteMouvement(_mouvements[i]),

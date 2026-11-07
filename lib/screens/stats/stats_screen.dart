@@ -5,10 +5,14 @@ import '../../auth/acces_refuse.dart';
 import '../../auth/auth_provider.dart';
 import '../../database/db_helper.dart';
 import '../../models/perruque.dart';
+import '../../navigation/app_section.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/export_csv.dart';
 import '../../utils/export_pdf.dart';
 import '../../utils/format.dart';
+import '../../utils/journal.dart';
+import '../../widgets/app_shell.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/stat_card.dart';
 
@@ -39,70 +43,95 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _charger() async {
-    final db = await DbHelper.instance.db;
-    final now = DateTime.now();
-    final debutJour = DateTime(now.year, now.month, now.day).toIso8601String();
-    final debutMois = DateTime(now.year, now.month).toIso8601String();
-    final debut7j = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 6))
-        .toIso8601String();
+    try {
+      final db = await DbHelper.instance.db;
+      final now = DateTime.now();
+      final debutJour =
+          DateTime(now.year, now.month, now.day).toIso8601String();
+      final debutMois = DateTime(now.year, now.month).toIso8601String();
+      final debutSeptJours = DateTime(now.year, now.month, now.day)
+          .subtract(const Duration(days: 6));
+      final debut7j = debutSeptJours.toIso8601String();
 
-    final jour = await db.rawQuery(
-        'SELECT COALESCE(SUM(montant),0) AS total, COUNT(*) AS n FROM ventes WHERE dateVente >= ?',
-        [debutJour]);
-    final mois = await db.rawQuery(
-        'SELECT COALESCE(SUM(montant),0) AS total, COUNT(*) AS n FROM ventes WHERE dateVente >= ?',
-        [debutMois]);
-    final stock = await db.rawQuery(
-        'SELECT COALESCE(SUM(quantite * prixAchat),0) AS achat, COALESCE(SUM(quantite * prixVente),0) AS vente FROM perruques');
-    final marge = await db.rawQuery('''
-      SELECT COALESCE(SUM(v.montant - p.prixAchat * v.quantite), 0) AS marge
-      FROM ventes v JOIN perruques p ON p.id = v.perruqueId
-      WHERE v.dateVente >= ?
-    ''', [debutMois]);
-    final best = await db.rawQuery('''
-      SELECT p.nom, SUM(v.quantite) AS totalVendus, SUM(v.montant) AS ca
-      FROM ventes v JOIN perruques p ON p.id = v.perruqueId
-      GROUP BY v.perruqueId
-      ORDER BY totalVendus DESC
-      LIMIT 5
-    ''');
-    final perruques = await db.query('perruques', orderBy: 'nom');
-    final ventesRes = await db.rawQuery('''
-      SELECT v.*, p.nom AS nomPerruque
-      FROM ventes v LEFT JOIN perruques p ON p.id = v.perruqueId
-      ORDER BY v.dateVente DESC
-    ''');
-    final ca7 = await db.rawQuery('''
-      SELECT date(dateVente) AS jour, COALESCE(SUM(montant),0) AS total
-      FROM ventes
-      WHERE dateVente >= ?
-      GROUP BY date(dateVente)
-      ORDER BY jour ASC
-    ''', [debut7j]);
+      final jour = await db.rawQuery(
+          'SELECT COALESCE(SUM(montant),0) AS total, COUNT(*) AS n FROM ventes WHERE dateVente >= ?',
+          [debutJour]);
+      final mois = await db.rawQuery(
+          'SELECT COALESCE(SUM(montant),0) AS total, COUNT(*) AS n FROM ventes WHERE dateVente >= ?',
+          [debutMois]);
+      final stock = await db.rawQuery(
+          'SELECT COALESCE(SUM(quantite * prixAchat),0) AS achat, COALESCE(SUM(quantite * prixVente),0) AS vente FROM perruques');
+      final marge = await db.rawQuery('''
+        SELECT COALESCE(SUM(v.montant - p.prixAchat * v.quantite), 0) AS marge
+        FROM ventes v JOIN perruques p ON p.id = v.perruqueId
+        WHERE v.dateVente >= ?
+      ''', [debutMois]);
+      final best = await db.rawQuery('''
+        SELECT p.nom, SUM(v.quantite) AS totalVendus, SUM(v.montant) AS ca
+        FROM ventes v JOIN perruques p ON p.id = v.perruqueId
+        GROUP BY v.perruqueId
+        ORDER BY totalVendus DESC
+        LIMIT 5
+      ''');
+      final perruques = await db.query('perruques', orderBy: 'nom');
+      final ventesRes = await db.rawQuery('''
+        SELECT v.*, p.nom AS nomPerruque
+        FROM ventes v LEFT JOIN perruques p ON p.id = v.perruqueId
+        ORDER BY v.dateVente DESC
+      ''');
+      final ca7 = await db.rawQuery('''
+        SELECT date(dateVente) AS jour, COALESCE(SUM(montant),0) AS total
+        FROM ventes
+        WHERE dateVente >= ?
+        GROUP BY date(dateVente)
+        ORDER BY jour ASC
+      ''', [debut7j]);
 
-    if (!mounted) return;
-    setState(() {
-      _caJour = (jour.first['total'] as num).toDouble();
-      _nbVentesJour = (jour.first['n'] as num).toInt();
-      _caMois = (mois.first['total'] as num).toDouble();
-      _nbVentesMois = (mois.first['n'] as num).toInt();
-      _valeurStockAchat = (stock.first['achat'] as num).toDouble();
-      _margeVendue = (marge.first['marge'] as num).toDouble();
-      _bestSellers = best;
-      _alertes =
-          perruques.map(Perruque.fromMap).where((p) => p.stockBas).toList();
-      _ventes = ventesRes;
-      _ca7Jours = ca7;
-      _chargement = false;
-    });
+      final parJour = <String, double>{
+        for (final ligne in ca7)
+          ligne['jour'].toString(): (ligne['total'] as num).toDouble(),
+      };
+      final ca7Complet = List<Map<String, dynamic>>.generate(7, (i) {
+        final jourDate = debutSeptJours.add(Duration(days: i));
+        final cle = jourDate.toIso8601String().substring(0, 10);
+        return {'jour': cle, 'total': parJour[cle] ?? 0.0};
+      });
+
+      if (!mounted) return;
+      setState(() {
+        _caJour = (jour.first['total'] as num).toDouble();
+        _nbVentesJour = (jour.first['n'] as num).toInt();
+        _caMois = (mois.first['total'] as num).toDouble();
+        _nbVentesMois = (mois.first['n'] as num).toInt();
+        _valeurStockAchat = (stock.first['achat'] as num).toDouble();
+        _margeVendue = (marge.first['marge'] as num).toDouble();
+        _bestSellers = best;
+        _alertes =
+            perruques.map(Perruque.fromMap).where((p) => p.stockBas).toList();
+        _ventes = ventesRes;
+        _ca7Jours = ca7Complet;
+        _chargement = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _chargement = false);
+      showAppSnack(
+        context,
+        'Impossible de charger les statistiques.',
+        type: AppSnackType.error,
+      );
+    }
   }
 
   Future<void> _exporterVentes() async {
     await exporterCsv(
       nomFichier: 'ventes',
       entetes: const [
-        'Date', 'Perruque', 'Quantite', 'Montant', 'ModePaiement'
+        'Date',
+        'Perruque',
+        'Quantite',
+        'Montant',
+        'ModePaiement'
       ],
       lignes: _ventes
           .map((v) => [
@@ -113,6 +142,12 @@ class _StatsScreenState extends State<StatsScreen> {
                 v['modePaiement'],
               ])
           .toList(),
+    );
+    if (!mounted) return;
+    await journaliser(
+      context,
+      'Export des ventes',
+      details: '${_ventes.length} vente(s) exportée(s) en CSV',
     );
   }
 
@@ -128,39 +163,47 @@ class _StatsScreenState extends State<StatsScreen> {
         .toList();
     await exporterRapportPdf(
       titre: 'Liste des ventes',
-      sousTitre: 'CA jour: ${formatFcfa(_caJour)} | CA mois: ${formatFcfa(_caMois)}',
+      sousTitre:
+          'CA jour: ${formatFcfa(_caJour)} | CA mois: ${formatFcfa(_caMois)}',
       entetes: const ['Date', 'Article', 'Qté', 'Montant (FCFA)', 'Paiement'],
       lignes: lignes,
+    );
+    if (!mounted) return;
+    await journaliser(
+      context,
+      'Export des ventes',
+      details: '${_ventes.length} vente(s) exportée(s) en PDF',
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final estAdmin = context.watch<AuthProvider>().isAdmin;
-    if (!estAdmin) {
+    final auth = context.watch<AuthProvider>();
+    if (!auth.peut('stats')) {
       return const AccesRefuse(
-        message:
-            'Les statistiques financières sont réservées à l\'administrateur.',
+        message: 'Les statistiques ne sont pas autorisées pour ce compte.',
       );
     }
+    final peutExporter = auth.peut('exports');
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Statistiques'),
-        actions: [
+    return AppShell(
+      section: AppSection.stats,
+      title: 'Statistiques',
+      actions: [
+        if (peutExporter)
           IconButton(
             tooltip: 'Exporter les ventes (CSV)',
             icon: const Icon(Icons.table_view_outlined),
             onPressed: _exporterVentes,
           ),
+        if (peutExporter)
           IconButton(
             tooltip: 'Exporter les ventes (PDF)',
             icon: const Icon(Icons.picture_as_pdf_outlined),
             onPressed: _exporterVentesPdf,
           ),
-          const SizedBox(width: 4),
-        ],
-      ),
+        const SizedBox(width: 4),
+      ],
       body: _chargement
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -207,11 +250,12 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Widget _grilleIndicateurs() {
+    final panierMoyen = _nbVentesMois == 0 ? 0.0 : _caMois / _nbVentesMois;
+
     return LayoutBuilder(
       builder: (ctx, contraintes) {
-        final colonnes = contraintes.maxWidth >= 720 ? 4 : 2;
-        final largeur =
-            (contraintes.maxWidth - (colonnes - 1) * 12) / colonnes;
+        final colonnes = contraintes.maxWidth >= 720 ? 3 : 2;
+        final largeur = (contraintes.maxWidth - (colonnes - 1) * 12) / colonnes;
 
         Widget element(Widget enfant) => SizedBox(
               width: largeur,
@@ -236,6 +280,13 @@ class _StatsScreenState extends State<StatsScreen> {
               value: formatFcfa(_caMois),
               accent: AppColors.roseDeep,
               background: AppColors.roseSoft,
+            )),
+            element(StatCard(
+              icon: Icons.shopping_bag_outlined,
+              label: 'Panier moyen (mois)',
+              value: formatFcfa(panierMoyen),
+              accent: const Color(0xFF6A4C93),
+              background: const Color(0xFFEFE8F7),
             )),
             element(StatCard(
               icon: Icons.inventory_2_outlined,
@@ -283,8 +334,7 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _ligneBestSeller(
-      Map<String, dynamic> b, int index, int maxVendus) {
+  Widget _ligneBestSeller(Map<String, dynamic> b, int index, int maxVendus) {
     final vendus = (b['totalVendus'] as num).toInt();
     final ca = (b['ca'] as num).toDouble();
     final ratio = maxVendus == 0 ? 0.0 : vendus / maxVendus;
@@ -390,8 +440,7 @@ class _StatsScreenState extends State<StatsScreen> {
           for (var i = 0; i < _alertes.length; i++) ...[
             if (i > 0) const Divider(),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               child: Row(
                 children: [
                   Container(
@@ -435,8 +484,8 @@ class _StatsScreenState extends State<StatsScreen> {
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 9, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.dangerSoft,
                       borderRadius: BorderRadius.circular(20),
@@ -459,27 +508,43 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
+  String _formatAxe(double valeur) {
+    if (valeur >= 1000000) {
+      return '${(valeur / 1000000).toStringAsFixed(1).replaceAll('.0', '')}M';
+    }
+    if (valeur >= 1000) {
+      return '${(valeur / 1000).round()}k';
+    }
+    return valeur.round().toString();
+  }
+
   Widget _graphiqueCA() {
-    if (_ca7Jours.isEmpty) {
+    final aDesDonnees = _ca7Jours.any(
+      (e) => (e['total'] as num).toDouble() > 0,
+    );
+    if (!aDesDonnees) {
       return _blocVide(
         icon: Icons.show_chart_rounded,
-        texte: 'Aucune donnée sur les 7 derniers jours.',
+        texte: 'Aucune vente sur les 7 derniers jours.',
       );
     }
+
     final maxY = _ca7Jours.fold<double>(
       0,
       (m, e) => ((e['total'] as num).toDouble()) > m
           ? ((e['total'] as num).toDouble())
           : m,
     );
-    final spots = <FlSpot>[];
-    for (var i = 0; i < _ca7Jours.length; i++) {
-      spots.add(FlSpot(i.toDouble(), (_ca7Jours[i]['total'] as num).toDouble()));
-    }
+    final spots = <FlSpot>[
+      for (var i = 0; i < _ca7Jours.length; i++)
+        FlSpot(i.toDouble(), (_ca7Jours[i]['total'] as num).toDouble()),
+    ];
+    final plafond = maxY == 0 ? 1000.0 : maxY * 1.25;
+    final intervalle = plafond / 4;
 
     return Container(
-      height: 220,
-      padding: const EdgeInsets.fromLTRB(12, 18, 16, 10),
+      height: 240,
+      padding: const EdgeInsets.fromLTRB(8, 20, 16, 8),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
@@ -488,28 +553,89 @@ class _StatsScreenState extends State<StatsScreen> {
       child: LineChart(
         LineChartData(
           minY: 0,
-          maxY: maxY == 0 ? 1000 : maxY * 1.2,
-          gridData: const FlGridData(show: false),
+          maxY: plafond,
+          minX: 0,
+          maxX: (_ca7Jours.length - 1).toDouble(),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: intervalle,
+            getDrawingHorizontalLine: (value) => const FlLine(
+              color: AppColors.line,
+              strokeWidth: 1,
+              dashArray: [4, 4],
+            ),
+          ),
           borderData: FlBorderData(show: false),
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (_) => AppColors.plum,
+              tooltipRoundedRadius: 10,
+              tooltipPadding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              getTooltipItems: (sposts) => sposts.map((spot) {
+                final i = spot.x.toInt();
+                final jour = i >= 0 && i < _ca7Jours.length
+                    ? _ca7Jours[i]['jour'].toString()
+                    : '';
+                final date = DateTime.tryParse(jour);
+                final label = date == null ? jour : formatDate(date);
+                return LineTooltipItem(
+                  '$label\n${formatFcfa(spot.y)}',
+                  const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
           titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 38,
+                interval: intervalle,
+                getTitlesWidget: (value, meta) => Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Text(
+                    _formatAxe(value),
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
+                reservedSize: 26,
+                interval: 1,
                 getTitlesWidget: (value, meta) {
                   final i = value.toInt();
-                  if (i < 0 || i >= _ca7Jours.length) return const SizedBox.shrink();
+                  if (i < 0 || i >= _ca7Jours.length) {
+                    return const SizedBox.shrink();
+                  }
                   final jour = _ca7Jours[i]['jour'].toString();
                   final parts = jour.split('-');
-                  final label = parts.length == 3 ? '${parts[2]}/${parts[1]}' : jour;
+                  final label =
+                      parts.length == 3 ? '${parts[2]}/${parts[1]}' : jour;
                   return Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       label,
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: 9.5,
                         color: AppColors.muted,
                       ),
                     ),
@@ -522,9 +648,20 @@ class _StatsScreenState extends State<StatsScreen> {
             LineChartBarData(
               spots: spots,
               isCurved: true,
+              curveSmoothness: 0.25,
+              preventCurveOverShooting: true,
               color: AppColors.rose,
               barWidth: 3,
-              dotData: const FlDotData(show: true),
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (spot, percent, bar, index) =>
+                    FlDotCirclePainter(
+                  radius: 3.5,
+                  color: AppColors.surface,
+                  strokeWidth: 2,
+                  strokeColor: AppColors.rose,
+                ),
+              ),
               belowBarData: BarAreaData(
                 show: true,
                 gradient: LinearGradient(
@@ -574,4 +711,3 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 }
-

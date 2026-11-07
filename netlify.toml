@@ -1,0 +1,22 @@
+[build]
+  publish = "build/web"
+
+[[headers]]
+  for = "/flutter_service_worker.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*.wasm"
+  [headers.values]
+    Content-Type = "application/wasm"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Content-Type = "application/manifest+json"

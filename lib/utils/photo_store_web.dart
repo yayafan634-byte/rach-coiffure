@@ -6,3 +6,8 @@ Future<String> savePickedPhoto(XFile picked) async {
   final mime = picked.mimeType ?? 'image/jpeg';
   return 'data:$mime;base64,${base64Encode(bytes)}';
 }
+
+Future<void> deletePhoto(String? chemin) async {
+  // Les photos web sont encodées en base64 dans la base : rien à supprimer
+  // sur le disque, il suffit de retirer la référence.
+}

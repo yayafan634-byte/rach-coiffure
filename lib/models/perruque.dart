@@ -9,6 +9,8 @@ class Perruque {
   final double prixAchat;
   final double prixVente;
   final String? photoPath;
+  final int seuilAlerte;
+  final String? fournisseur;
 
   Perruque({
     this.id,
@@ -21,9 +23,16 @@ class Perruque {
     required this.prixAchat,
     required this.prixVente,
     this.photoPath,
+    this.seuilAlerte = 3,
+    this.fournisseur,
   });
 
-  bool get stockBas => quantite <= 3;
+  bool get stockBas => quantite <= seuilAlerte;
+
+  double get margeUnitaire => prixVente - prixAchat;
+
+  double get margePourcent =>
+      prixAchat <= 0 ? 0 : (margeUnitaire / prixAchat) * 100;
 
   Map<String, dynamic> toMap() => {
         if (id != null) 'id': id,
@@ -36,6 +45,8 @@ class Perruque {
         'prixAchat': prixAchat,
         'prixVente': prixVente,
         'photoPath': photoPath,
+        'seuilAlerte': seuilAlerte,
+        'fournisseur': fournisseur,
       };
 
   factory Perruque.fromMap(Map<String, dynamic> m) => Perruque(
@@ -49,5 +60,7 @@ class Perruque {
         prixAchat: (m['prixAchat'] as num).toDouble(),
         prixVente: (m['prixVente'] as num).toDouble(),
         photoPath: m['photoPath'],
+        seuilAlerte: (m['seuilAlerte'] as num?)?.toInt() ?? 3,
+        fournisseur: m['fournisseur'] as String?,
       );
 }

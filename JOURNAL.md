@@ -88,3 +88,64 @@ Fichier tenu à jour par l'assistant à chaque session (continuité entre les co
 1. Tester visuellement sur téléphone réel (petits écrans) et ajuster si besoin.
 2. Build iOS (Mac/Xcode + signature Apple).
 3. Idée future : polices embarquées pour renforcer l'identité.
+
+## Session 5 — 30/10/2026 : PWA iPhone + dispositions responsive + mise en ligne
+
+**PWA / iPhone :**
+- Vérifié : le projet compile en web (`flutter build web --release`).
+- Ajout d'une bannière d'installation sur iPhone (`widgets/install_pwa_banner.dart`, `utils/install_pwa*.dart`) : affichée sur iOS hors mode standalone. Elle est cliquable et ouvre une aide en 4 étapes (Safari, Partager, Sur l'écran d'accueil, Ajouter) + bouton « Copier le lien ». Rappel : iOS n'expose aucun bouton « Installer » natif.
+- Ajout de `netlify.toml` (publish `build/web`, cache service worker/wasm).
+- Déploiement GitHub Pages effectué sur la branche `gh-pages` (build avec `--base-href /rach-coiffure/`).
+- URL en ligne : https://yayafan634-byte.github.io/rach-coiffure/
+
+**Dispositions responsive (mobile + tablette/desktop) :**
+- Nouveau `navigation/app_section.dart` + `widgets/app_shell.dart` : barre latérale permanente ≥ 1024 px, drawer sur mobile, en-tête cohérent, menu compte (rôle + déconnexion), contenu plafonné à 1180 px.
+- Routes nommées (`/dashboard`, `/stock`, ...) déclarées dans `main.dart`.
+- Écrans Stock, Clients, Caisse, RDV, Stats, Utilisateurs migrés vers `AppShell`.
+- Dashboard : salutation + grille d'accès rapides + bandeau rôle + alerte stock ; ancien drawer/menu supprimé.
+- Connexion : layout en deux panneaux sur large écran (panneau marque + formulaire), empilé sur mobile.
+- `recu_pdf.dart` : 9 `const` ajoutés (à nouveau 0 issue `flutter analyze`).
+
+**Vérifications :** `flutter analyze` 0 issue, `flutter test` OK (1 test), `flutter build web --release` OK.
+
+**À noter :** la mise en ligne utilise le build local ; le code source de cette session n'est pas encore commité sur `main`. Pour des mises à jour automatiques du site, il faudra committer et ajouter un workflow GitHub Actions (build + deploy `gh-pages`).
+
+## Session 6 - 30/10/2026 : panier multi-articles, historique et autorisations
+
+**Caisse / stock :**
+- Mode sélection dans le Stock (icône checklist ou appui long) : cocher plusieurs articles, total en direct, puis « Encaisser » ouvre le panier pré-rempli.
+- ouvrirEncaissement(...) réutilisable, panier passé à EncaissementSheet.lignesInitiales.
+
+**Historique :**
+- Nouvel écran admin screens/admin/historique_screen.dart (section /historique) : recherche, filtres Aujourd'hui/7 jours/Tout, filtre par utilisateur, regroupement par jour, purge avec confirmation.
+- Journalisation : connexions/déconnexions, ventes (déjà), articles ajoutés/modifiés/supprimés, clients, rendez-vous, comptes créés/désactivés, autorisations modifiées, exports CSV/PDF.
+
+**Autorisations :**
+- models/permission.dart (7 permissions), colonne users.permissions (DB v5, ALTER TABLE à la migration).
+- Admin = toutes les permissions ; gestionnaire = ensemble coché à la création ou modifiable ensuite via l'icône réglages.
+- Navigation, dashboard, routes et actions sensibles (suppressions, exports) filtrés via AuthProvider.peut(...).
+
+**Vérifications :** dart format, lutter analyze 0 issue, lutter test OK, lutter build web --release OK.
+
+**À noter :** source toujours non commitée sur main ; site mis à jour via la branche gh-pages.
+
+## Session 7 - 07/11/2026 : audit et durcissement
+
+**Audit :** rapport complet remis (sécurité, bugs de données, dette technique). `flutter analyze` 0 issue, `flutter test` OK.
+
+**Sécurité :**
+- Mot de passe admin initial `0000`/`admin123` désormais marqué « à changer » (DB v7, colonne `users.doitChangerMotDePasse`), écran de changement obligatoire après connexion et pour les installations existantes utilisant encore le mot de passe par défaut.
+- Politique de mot de passe : 8 caractères minimum, au moins une lettre et un chiffre (`validerMotDePasse`).
+- Limitation des tentatives de connexion : 5 échecs = blocage temporaire 5 min (mémoire de session).
+- Nouveau menu « Changer mon mot de passe » et réinitialisation par l'admin (changement forcé à la prochaine connexion).
+- Restauration de sauvegarde refusée si la sauvegarde ne contient aucun administrateur valide (évite de verrouiller l'application).
+- `PRAGMA foreign_keys = ON` activé (`onConfigure`) ; suppression d'article nettoie désormais les mouvements de stock et la photo, et `ventesLiees` compte aussi les lignes `venteItems`.
+- Suppression de fiche client ajoutée (permission `suppressions`) avec blocage si ventes ou rendez-vous liés.
+
+**Bugs corrigés :**
+- `stock_form_screen.dart` : `seuilAlerte` et `fournisseur` ne sont plus réinitialisés (champs éditables), mise à jour fiche + mouvement de stock dans une seule transaction, ancienne photo supprimée.
+- `client_form_sheet.dart` : `dateNaissance` conservée et éditable via sélecteur de date.
+- Chaînes corrompues corrigées dans `dashboard_screen.dart` et `rdv_screen.dart`.
+- Tests modèles ajoutés (`test/models_test.dart`).
+
+**Reste à faire manuellement :** révoquer/rotationner la clé `service_role` dans Supabase puis supprimer `cle.txt`, configurer la signature release Android, valider la migration DB sur une copie de données réelles.

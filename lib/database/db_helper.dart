@@ -17,7 +17,10 @@ class DbHelper {
     final path = await databaseFilePath();
     return openDatabase(
       path,
-      version: 2,
+      version: 7,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -39,6 +42,99 @@ class DbHelper {
       await db.execute(
           'ALTER TABLE ventes ADD COLUMN quantite INTEGER NOT NULL DEFAULT 1');
     }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE ventes ADD COLUMN libelle TEXT');
+    }
+    if (oldVersion < 4) {
+      await db.execute(
+          'ALTER TABLE perruques ADD COLUMN seuilAlerte INTEGER NOT NULL DEFAULT 3');
+      await db.execute('ALTER TABLE perruques ADD COLUMN fournisseur TEXT');
+      await db.execute('ALTER TABLE clients ADD COLUMN dateNaissance TEXT');
+      await db.execute(
+          'ALTER TABLE ventes ADD COLUMN remise REAL NOT NULL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE ventes ADD COLUMN pointsUtilises INTEGER NOT NULL DEFAULT 0');
+
+      await _creerTablesV4(db);
+
+      await db.execute('''
+        INSERT INTO venteItems
+          (venteId, perruqueId, libelle, prixUnitaire, quantite, montant)
+        SELECT id, perruqueId, libelle,
+               CASE WHEN quantite > 0 THEN montant / quantite ELSE montant END,
+               quantite, montant
+        FROM ventes
+        WHERE perruqueId IS NOT NULL OR (libelle IS NOT NULL AND libelle <> '')
+      ''');
+    }
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE users ADD COLUMN permissions TEXT');
+    }
+    if (oldVersion < 6) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sync_meta(
+          cle TEXT PRIMARY KEY,
+          valeur TEXT NOT NULL
+        )
+      ''');
+    }
+    if (oldVersion < 7) {
+      await db.execute(
+          'ALTER TABLE users ADD COLUMN doitChangerMotDePasse INTEGER NOT NULL DEFAULT 0');
+    }
+  }
+
+  Future<void> _creerTablesV4(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS venteItems(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venteId INTEGER NOT NULL,
+        perruqueId INTEGER,
+        libelle TEXT,
+        prixUnitaire REAL NOT NULL,
+        quantite INTEGER NOT NULL DEFAULT 1,
+        montant REAL NOT NULL,
+        FOREIGN KEY(venteId) REFERENCES ventes(id) ON DELETE CASCADE,
+        FOREIGN KEY(perruqueId) REFERENCES perruques(id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS parametres(
+        cle TEXT PRIMARY KEY,
+        valeur TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS activites(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER,
+        utilisateur TEXT,
+        action TEXT NOT NULL,
+        details TEXT,
+        date TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS depenses(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        libelle TEXT NOT NULL,
+        categorie TEXT,
+        montant REAL NOT NULL,
+        date TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_venteItems_vente ON venteItems(venteId)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(dateVente)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_rdv_date ON rendezVous(dateHeure)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_activites_date ON activites(date)');
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -49,7 +145,9 @@ class DbHelper {
         telephone TEXT NOT NULL UNIQUE,
         motDePasseHash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'gestionnaire',
-        actif INTEGER NOT NULL DEFAULT 1
+        actif INTEGER NOT NULL DEFAULT 1,
+        permissions TEXT,
+        doitChangerMotDePasse INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -64,7 +162,9 @@ class DbHelper {
         quantite INTEGER NOT NULL DEFAULT 0,
         prixAchat REAL NOT NULL,
         prixVente REAL NOT NULL,
-        photoPath TEXT
+        photoPath TEXT,
+        seuilAlerte INTEGER NOT NULL DEFAULT 3,
+        fournisseur TEXT
       )
     ''');
 
@@ -75,7 +175,8 @@ class DbHelper {
         telephone TEXT NOT NULL,
         adresse TEXT,
         pointsFidelite INTEGER NOT NULL DEFAULT 0,
-        dateCreation TEXT NOT NULL
+        dateCreation TEXT NOT NULL,
+        dateNaissance TEXT
       )
     ''');
 
@@ -110,6 +211,9 @@ class DbHelper {
         montant REAL NOT NULL,
         quantite INTEGER NOT NULL DEFAULT 1,
         modePaiement TEXT NOT NULL,
+        libelle TEXT,
+        remise REAL NOT NULL DEFAULT 0,
+        pointsUtilises INTEGER NOT NULL DEFAULT 0,
         dateVente TEXT NOT NULL,
         FOREIGN KEY(clientId) REFERENCES clients(id),
         FOREIGN KEY(perruqueId) REFERENCES perruques(id),
@@ -128,5 +232,14 @@ class DbHelper {
         FOREIGN KEY(perruqueId) REFERENCES perruques(id)
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE sync_meta(
+        cle TEXT PRIMARY KEY,
+        valeur TEXT NOT NULL
+      )
+    ''');
+
+    await _creerTablesV4(db);
   }
 }

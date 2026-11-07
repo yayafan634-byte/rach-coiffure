@@ -5,6 +5,7 @@ class Client {
   final String? adresse;
   final int pointsFidelite;
   final DateTime dateCreation;
+  final DateTime? dateNaissance;
 
   Client({
     this.id,
@@ -13,6 +14,7 @@ class Client {
     this.adresse,
     this.pointsFidelite = 0,
     DateTime? dateCreation,
+    this.dateNaissance,
   }) : dateCreation = dateCreation ?? DateTime.now();
 
   Map<String, dynamic> toMap() => {
@@ -22,6 +24,7 @@ class Client {
         'adresse': adresse,
         'pointsFidelite': pointsFidelite,
         'dateCreation': dateCreation.toIso8601String(),
+        'dateNaissance': dateNaissance?.toIso8601String(),
       };
 
   factory Client.fromMap(Map<String, dynamic> m) => Client(
@@ -29,7 +32,10 @@ class Client {
         nom: m['nom'],
         telephone: m['telephone'],
         adresse: m['adresse'],
-        pointsFidelite: m['pointsFidelite'],
+        pointsFidelite: (m['pointsFidelite'] as num?)?.toInt() ?? 0,
         dateCreation: DateTime.parse(m['dateCreation']),
+        dateNaissance: m['dateNaissance'] == null
+            ? null
+            : DateTime.tryParse(m['dateNaissance'] as String),
       );
 }

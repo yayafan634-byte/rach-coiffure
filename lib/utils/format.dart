@@ -41,12 +41,15 @@ String formatDateHeure(DateTime date) => _dateHeure.format(date);
 String dateLongueFr(DateTime date) =>
     '${_jours[date.weekday - 1]} ${date.day} ${_mois[date.month - 1]} ${date.year}';
 
+String dateLongueFrCapitalisee(DateTime date) {
+  final valeur = dateLongueFr(date);
+  if (valeur.isEmpty) return valeur;
+  return valeur[0].toUpperCase() + valeur.substring(1);
+}
+
 String initiales(String nom) {
-  final mots = nom
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((m) => m.isNotEmpty)
-      .toList();
+  final mots =
+      nom.trim().split(RegExp(r'\s+')).where((m) => m.isNotEmpty).toList();
   if (mots.isEmpty) return '?';
   if (mots.length == 1) return mots.first.substring(0, 1).toUpperCase();
   return '${mots.first.substring(0, 1)}${mots.last.substring(0, 1)}'

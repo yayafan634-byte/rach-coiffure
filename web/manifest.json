@@ -1,11 +1,11 @@
 {
-    "name": "perruques_salon",
-    "short_name": "perruques_salon",
+    "name": "Rach Coiffure",
+    "short_name": "Rach Coiffure",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#E11D48",
+    "theme_color": "#E11D48",
+    "description": "Gestion du salon de coiffure et vente de perruques.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

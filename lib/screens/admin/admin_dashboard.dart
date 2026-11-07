@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../dashboard/dashboard_screen.dart';
 
 class AdminDashboard extends StatelessWidget {
@@ -9,4 +9,3 @@ class AdminDashboard extends StatelessWidget {
     return const DashboardScreen();
   }
 }
-

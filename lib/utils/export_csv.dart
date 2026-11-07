@@ -1,2 +1,1 @@
-export 'export_csv_io.dart'
-    if (dart.library.html) 'export_csv_web.dart';
+export 'export_csv_io.dart' if (dart.library.html) 'export_csv_web.dart';
