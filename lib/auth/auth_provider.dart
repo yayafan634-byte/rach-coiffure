@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart';
 import '../database/db_helper.dart';
 import '../models/user.dart';
 import '../services/activite_service.dart';
@@ -23,6 +24,7 @@ class _Tentatives {
 class AuthProvider extends ChangeNotifier {
   static const int _maxTentatives = 5;
   static const Duration _dureeBlocage = Duration(minutes: 5);
+  static const String _cleSession = 'session_user_id';
   final Map<String, _Tentatives> _tentatives = {};
 
   AppUser? _user;
@@ -33,6 +35,59 @@ class AuthProvider extends ChangeNotifier {
 
   Set<String> get permissions => _user?.permissions ?? const {};
   bool peut(String cle) => _user?.peut(cle) ?? false;
+
+  Future<void> chargerSession() async {
+    try {
+      final db = await DbHelper.instance.db;
+      final res = await db.query(
+        'sync_meta',
+        where: 'cle = ?',
+        whereArgs: [_cleSession],
+        limit: 1,
+      );
+      if (res.isEmpty) return;
+      final id = int.tryParse(res.first['valeur']?.toString() ?? '');
+      if (id == null) {
+        await _supprimerSession();
+        return;
+      }
+      final users = await db.query(
+        'users',
+        where: 'id = ? AND actif = 1',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (users.isEmpty) {
+        await _supprimerSession();
+        return;
+      }
+      _user = AppUser.fromMap(users.first);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _enregistrerSession(int? userId) async {
+    if (userId == null) return;
+    try {
+      final db = await DbHelper.instance.db;
+      await db.insert(
+        'sync_meta',
+        {'cle': _cleSession, 'valeur': '$userId'},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _supprimerSession() async {
+    try {
+      final db = await DbHelper.instance.db;
+      await db.delete(
+        'sync_meta',
+        where: 'cle = ?',
+        whereArgs: [_cleSession],
+      );
+    } catch (_) {}
+  }
 
   Future<String?> login(String telephone, String motDePasse) async {
     final cle = telephone.trim().toLowerCase();
@@ -87,6 +142,7 @@ class AuthProvider extends ChangeNotifier {
       } catch (_) {}
     }
     _user = utilisateur;
+    await _enregistrerSession(utilisateur.id);
     await ActiviteService.instance.log(
       action: 'Connexion',
       details:
@@ -190,6 +246,7 @@ class AuthProvider extends ChangeNotifier {
       );
     }
     _user = null;
+    await _supprimerSession();
     notifyListeners();
   }
 

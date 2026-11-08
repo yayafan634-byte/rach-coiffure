@@ -11,6 +11,7 @@ import '../../widgets/app_shell.dart';
 import '../../widgets/app_snack.dart';
 import '../admin/gestion_users.dart';
 import '../admin/historique_screen.dart';
+import '../admin/sauvegardes_cloud_screen.dart';
 import '../caisse/caisse_screen.dart';
 import '../clients/clients_screen.dart';
 import '../rdv/rdv_screen.dart';
@@ -36,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _charger();
+    CloudSync.instance.rafraichirStatut();
   }
 
   Future<void> _charger() async {
@@ -141,7 +143,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             _salutation(nom, role, dateStr),
-            const SizedBox(height: 26),
+            const SizedBox(height: 14),
+            _SyncStatusBar(
+              enCours: _syncEnCours,
+              onSync: _synchroniser,
+            ),
+            const SizedBox(height: 22),
             const _SectionTitle('Aperçu du jour'),
             const SizedBox(height: 14),
             _apercu(auth),
@@ -415,6 +422,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       if (auth.isAdmin)
         _MenuItem(
+          icon: Icons.cloud_done_outlined,
+          label: 'Sauvegardes cloud',
+          subtitle: 'Historique & restauration',
+          color: AppColors.blue,
+          onTap: () => _ouvrir(const SauvegardesCloudScreen()),
+        ),
+      if (auth.isAdmin)
+        _MenuItem(
           icon: Icons.history_rounded,
           label: 'Historique',
           subtitle: 'Journal des actions',
@@ -660,6 +675,97 @@ class _ApercuCardState extends State<_ApercuCard>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SyncStatusBar extends StatelessWidget {
+  final bool enCours;
+  final VoidCallback onSync;
+
+  const _SyncStatusBar({required this.enCours, required this.onSync});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CloudSyncStatut>(
+      valueListenable: CloudSync.instance.statut,
+      builder: (context, statut, _) {
+        final (icone, accent, fond) = switch (statut.etat) {
+          CloudSyncEtat.aJour => (
+              Icons.cloud_done_rounded,
+              AppColors.success,
+              AppColors.successSoft,
+            ),
+          CloudSyncEtat.enAttente => (
+              Icons.cloud_upload_outlined,
+              AppColors.warning,
+              AppColors.warningSoft,
+            ),
+          CloudSyncEtat.synchronisation => (
+              Icons.cloud_sync_rounded,
+              AppColors.blue,
+              const Color(0xFFE4EFF7),
+            ),
+          CloudSyncEtat.erreur || CloudSyncEtat.horsLigne => (
+              Icons.cloud_off_rounded,
+              AppColors.danger,
+              AppColors.dangerSoft,
+            ),
+          CloudSyncEtat.inconnu => (
+              Icons.cloud_outlined,
+              AppColors.slate500,
+              AppColors.surfaceAlt,
+            ),
+        };
+        final derniere = statut.derniereSync;
+        final texte = derniere == null
+            ? statut.message
+            : '${statut.message} Dernière synchro : ${formatDateHeure(derniere)}';
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+          decoration: BoxDecoration(
+            color: fond,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: accent.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              Icon(icone, size: 20, color: accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  texte,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.slate700,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              enCours
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      tooltip: 'Synchroniser maintenant',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
+                      color: accent,
+                      onPressed: onSync,
+                    ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -167,3 +167,17 @@ Fichier tenu à jour par l'assistant à chaque session (continuité entre les co
 **Vérifications :** `flutter analyze` 0 issue, `flutter test` OK (7 tests), `flutter build web --release` OK, `flutter build apk --release` OK (63,3 Mo). APK : `RachCoiffure-1.0.0-sync.apk`.
 
 **Reste à faire :** coller/exécuter `supabase/schema.sql` dans Supabase, puis tester deux téléphones (saisie + encaissement sur l'un, réouverture ou bouton cloud sur l'autre).
+
+## Session 9 - 08/11/2026 : sauvegardes cloud, photos, session, WhatsApp et bénéfice
+
+**Réalisé :**
+- Historique cloud : `CloudSync` conserve automatiquement les 10 dernières versions dans `public.cloud_sync` (ids `salon_1` à `salon_10`), avec rotation du créneau le plus ancien et restauration depuis l'écran admin « Sauvegardes cloud ». La restauration repousse la version choisie vers tous les appareils.
+- Indicateur de synchronisation sur le tableau de bord : état (à jour, en attente, en cours, erreur), dernière synchronisation et bouton de relance.
+- Photos de perruques : envoi vers le bucket Supabase Storage `photos` avec repli local/base64 si le bucket ou le réseau n'est pas disponible. Les URL publiques sont affichées par `NetworkImage`.
+- Session persistante : l'identifiant du dernier utilisateur connecté est mémorisé dans `sync_meta` (local à l'appareil, non synchronisé) ; l'application rouvre directement le tableau de bord, sauf changement de mot de passe obligatoire.
+- Rappels de rendez-vous par WhatsApp : bouton dans les actions du RDV et menu contextuel, message pré-rempli avec le nom du client et la date/heure, numéro local Burkinabè converti en `226...`.
+- Statistiques de profit : dépenses du mois et bénéfice net (marge vendue − dépenses) ajoutés aux indicateurs.
+
+**Vérifications :** `dart format`, `flutter analyze` 0 issue, `flutter test` OK (7 tests), `flutter build web --release` OK, `flutter build apk --release` OK (63,6 Mo). APK : `RachCoiffure-1.0.0-complet.apk`.
+
+**À faire manuellement :** relancer `supabase/schema.sql` dans Supabase pour créer le bucket `photos` et ses politiques Storage. Sans cela, les photos restent locales (aucune erreur bloquante).

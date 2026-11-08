@@ -2,7 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 ImageProvider? photoImageProvider(String? path) {
-  if (path == null || !path.startsWith('data:')) return null;
+  if (path == null || path.isEmpty) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return NetworkImage(path);
+  }
+  if (!path.startsWith('data:')) return null;
   final virgule = path.indexOf(',');
   if (virgule < 0) return null;
   try {

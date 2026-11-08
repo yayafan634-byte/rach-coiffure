@@ -235,3 +235,31 @@ drop policy if exists cloud_sync_acces on public.cloud_sync;
 create policy cloud_sync_acces on public.cloud_sync
   for all to anon, authenticated
   using (true) with check (true);
+
+-- ---------------------------------------------------------------------------
+-- Stockage des photos de perruques (bucket public + acces anon/authentifie)
+-- ---------------------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('photos', 'photos', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists photos_lecture on storage.objects;
+create policy photos_lecture on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'photos');
+
+drop policy if exists photos_ajout on storage.objects;
+create policy photos_ajout on storage.objects
+  for insert to anon, authenticated
+  with check (bucket_id = 'photos');
+
+drop policy if exists photos_modification on storage.objects;
+create policy photos_modification on storage.objects
+  for update to anon, authenticated
+  using (bucket_id = 'photos') with check (bucket_id = 'photos');
+
+drop policy if exists photos_suppression on storage.objects;
+create policy photos_suppression on storage.objects
+  for delete to anon, authenticated
+  using (bucket_id = 'photos');

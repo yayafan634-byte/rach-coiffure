@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../auth/acces_refuse.dart';
 import '../../auth/auth_provider.dart';
 import '../../database/db_helper.dart';
@@ -375,6 +376,74 @@ class _RdvScreenState extends State<RdvScreen> {
     return c.isEmpty ? 'Client #$id' : c.first.nom;
   }
 
+  Client? _clientDe(int id) {
+    final c = _clients.where((c) => c.id == id).toList();
+    return c.isEmpty ? null : c.first;
+  }
+
+  String _numeroWhatsApp(String brut) {
+    var numero = brut.replaceAll(RegExp(r'[^0-9]'), '');
+    if (numero.startsWith('00')) numero = numero.substring(2);
+    if (numero.length == 8) return '226$numero';
+    return numero;
+  }
+
+  Future<void> _rappelWhatsApp(RendezVous r) async {
+    final client = _clientDe(r.clientId);
+    final telephone = client?.telephone.trim() ?? '';
+    if (telephone.isEmpty) {
+      showAppSnack(
+        context,
+        'Aucun numéro de téléphone pour ce client.',
+        type: AppSnackType.error,
+      );
+      return;
+    }
+    final numero = _numeroWhatsApp(telephone);
+    if (numero.isEmpty) {
+      showAppSnack(
+        context,
+        'Numéro de téléphone invalide.',
+        type: AppSnackType.error,
+      );
+      return;
+    }
+    final nom = client?.nom ?? 'cliente';
+    final texte = 'Bonjour $nom, rappel de votre rendez-vous au salon '
+        'Rach Coiffure le ${formatDateHeure(r.dateHeure)}. '
+        'Merci de nous prévenir en cas d\'empêchement.';
+    final uri = Uri.parse(
+      'https://wa.me/$numero?text=${Uri.encodeComponent(texte)}',
+    );
+    try {
+      final ouvert = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ouvert && mounted) {
+        showAppSnack(
+          context,
+          'Impossible d\'ouvrir WhatsApp.',
+          type: AppSnackType.error,
+        );
+        return;
+      }
+      if (!mounted) return;
+      await journaliser(
+        context,
+        'Rappel WhatsApp',
+        details: '$nom • ${formatDateHeure(r.dateHeure)}',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        'Impossible d\'ouvrir WhatsApp sur cet appareil.',
+        type: AppSnackType.error,
+      );
+    }
+  }
+
   List<RendezVous> _rdvDuJour(DateTime day) {
     final debut = DateTime(day.year, day.month, day.day);
     final fin = debut.add(const Duration(days: 1));
@@ -671,11 +740,17 @@ class _RdvScreenState extends State<RdvScreen> {
                   onSelected: (valeur) {
                     if (valeur == 'supprimer') {
                       _supprimer(r);
+                    } else if (valeur == 'whatsapp') {
+                      _rappelWhatsApp(r);
                     } else {
                       _changerStatut(r, valeur);
                     }
                   },
                   itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'whatsapp',
+                      child: Text('Rappel WhatsApp'),
+                    ),
                     const PopupMenuItem(
                       value: 'terminé',
                       child: Text('Marquer terminé'),
@@ -722,6 +797,17 @@ class _RdvScreenState extends State<RdvScreen> {
                   '${formatDateHeure(r.dateHeure)} • ${r.statut.isEmpty ? 'Prévu' : r.statut}',
             ),
             const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: AppColors.success,
+              ),
+              title: const Text('Envoyer un rappel WhatsApp'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _rappelWhatsApp(r);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.check_circle_outline,
                   color: AppColors.success),

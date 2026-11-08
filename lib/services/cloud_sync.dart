@@ -22,6 +22,53 @@ class CloudSyncResult {
   });
 }
 
+enum CloudSyncEtat {
+  inconnu,
+  horsLigne,
+  aJour,
+  enAttente,
+  synchronisation,
+  erreur
+}
+
+class CloudSyncStatut {
+  final CloudSyncEtat etat;
+  final DateTime? derniereSync;
+  final String message;
+
+  const CloudSyncStatut({
+    this.etat = CloudSyncEtat.inconnu,
+    this.derniereSync,
+    this.message = '',
+  });
+
+  CloudSyncStatut copyWith({
+    CloudSyncEtat? etat,
+    DateTime? derniereSync,
+    String? message,
+  }) {
+    return CloudSyncStatut(
+      etat: etat ?? this.etat,
+      derniereSync: derniereSync ?? this.derniereSync,
+      message: message ?? this.message,
+    );
+  }
+}
+
+class CloudSnapshot {
+  final String id;
+  final DateTime? date;
+  final int poids;
+  final bool principal;
+
+  const CloudSnapshot({
+    required this.id,
+    required this.date,
+    required this.poids,
+    required this.principal,
+  });
+}
+
 class CloudSync {
   CloudSync._();
 
@@ -31,7 +78,13 @@ class CloudSync {
   static const String _id = 'salon';
   static const String _metaHash = 'cloud_hash';
   static const String _metaUpdated = 'cloud_updated_at';
+  static const String _metaHistHash = 'cloud_hist_hash';
+  static const String _metaHistIndex = 'cloud_hist_index';
+  static const int _maxHistorique = 10;
   static const Duration _delaiReseau = Duration(seconds: 8);
+
+  final ValueNotifier<CloudSyncStatut> statut =
+      ValueNotifier<CloudSyncStatut>(const CloudSyncStatut());
 
   SupabaseClient? _client;
   Timer? _auto;
@@ -42,12 +95,20 @@ class CloudSync {
 
   bool get actif => _client != null;
 
+  SupabaseClient? get client => _client;
+
   Future<void> init() => _initFuture ??= _initialiser();
 
   Future<void> _initialiser() async {
     if (_initLance) return;
     _initLance = true;
-    if (!SupabaseConfig.actif) return;
+    if (!SupabaseConfig.actif) {
+      statut.value = const CloudSyncStatut(
+        etat: CloudSyncEtat.horsLigne,
+        message: 'Synchronisation désactivée.',
+      );
+      return;
+    }
     try {
       await Supabase.initialize(
         url: SupabaseConfig.url,
@@ -56,6 +117,10 @@ class CloudSync {
       _client = Supabase.instance.client;
     } catch (e) {
       debugPrint('CloudSync init: $e');
+      statut.value = const CloudSyncStatut(
+        etat: CloudSyncEtat.horsLigne,
+        message: 'Cloud indisponible.',
+      );
     }
   }
 
@@ -77,6 +142,10 @@ class CloudSync {
   Future<CloudSyncResult> synchroniser({bool force = false}) async {
     await init();
     if (_client == null) {
+      statut.value = const CloudSyncStatut(
+        etat: CloudSyncEtat.horsLigne,
+        message: 'Synchronisation indisponible.',
+      );
       return const CloudSyncResult(
         ok: false,
         donneesRecues: false,
@@ -92,6 +161,10 @@ class CloudSync {
     }
 
     _busy = true;
+    statut.value = statut.value.copyWith(
+      etat: CloudSyncEtat.synchronisation,
+      message: 'Synchronisation en cours...',
+    );
     try {
       final local = await BackupService.instance.exporter();
       final hashLocal = _empreinte(local);
@@ -101,6 +174,7 @@ class CloudSync {
       if (distant == null) {
         await _envoyer(local, hashLocal);
         _demarrerAuto();
+        _marquerAJour();
         return const CloudSyncResult(
           ok: true,
           donneesRecues: false,
@@ -126,7 +200,9 @@ class CloudSync {
             await BackupService.instance.restaurer(jsonEncode(dataDistante));
         await _setMeta(_metaHash, hashDistant);
         await _setMeta(_metaUpdated, remoteUpdated);
+        await _archiverHistorique(dataDistante, hashDistant, remoteUpdated);
         _demarrerAuto();
+        _marquerAJour(date: DateTime.tryParse(remoteUpdated));
         return CloudSyncResult(
           ok: true,
           donneesRecues: true,
@@ -137,6 +213,7 @@ class CloudSync {
       if (localModifie || force) {
         await _envoyer(local, hashLocal);
         _demarrerAuto();
+        _marquerAJour();
         return const CloudSyncResult(
           ok: true,
           donneesRecues: false,
@@ -145,6 +222,7 @@ class CloudSync {
       }
 
       _demarrerAuto();
+      _marquerAJour(date: DateTime.tryParse(remoteUpdated));
       return const CloudSyncResult(
         ok: true,
         donneesRecues: false,
@@ -152,6 +230,11 @@ class CloudSync {
       );
     } catch (e) {
       debugPrint('CloudSync synchroniser: $e');
+      statut.value = CloudSyncStatut(
+        etat: CloudSyncEtat.erreur,
+        derniereSync: statut.value.derniereSync,
+        message: 'Synchronisation impossible. Vérifiez la connexion.',
+      );
       return const CloudSyncResult(
         ok: false,
         donneesRecues: false,
@@ -169,14 +252,228 @@ class CloudSync {
     try {
       final local = await BackupService.instance.exporter();
       final hashLocal = _empreinte(local);
-      if (hashLocal == await _meta(_metaHash)) return;
+      if (hashLocal == await _meta(_metaHash)) {
+        _marquerAJour(date: DateTime.tryParse(await _meta(_metaUpdated) ?? ''));
+        return;
+      }
       if (_poids(local) == 0) {
         final distant = await _telecharger();
-        if (distant != null && _poids(distant.$1) > 0) return;
+        if (distant != null && _poids(distant.$1) > 0) {
+          statut.value = statut.value.copyWith(
+            etat: CloudSyncEtat.enAttente,
+            message: 'Le cloud contient des données plus complètes.',
+          );
+          return;
+        }
       }
       await _envoyer(local, hashLocal);
+      _marquerAJour();
     } catch (e) {
       debugPrint('CloudSync push: $e');
+      statut.value = CloudSyncStatut(
+        etat: CloudSyncEtat.enAttente,
+        derniereSync: statut.value.derniereSync,
+        message: 'Modifications en attente de connexion.',
+      );
+    }
+  }
+
+  void _marquerAJour({DateTime? date}) {
+    statut.value = CloudSyncStatut(
+      etat: CloudSyncEtat.aJour,
+      derniereSync: date ?? DateTime.now(),
+      message: 'Données synchronisées.',
+    );
+  }
+
+  Future<void> rafraichirStatut() async {
+    await init();
+    if (_client == null) {
+      statut.value = const CloudSyncStatut(
+        etat: CloudSyncEtat.horsLigne,
+        message: 'Cloud indisponible.',
+      );
+      return;
+    }
+    try {
+      final local = await BackupService.instance.exporter();
+      final hashLocal = _empreinte(local);
+      final dernierHash = await _meta(_metaHash);
+      final derniere = DateTime.tryParse(await _meta(_metaUpdated) ?? '');
+      if (hashLocal == dernierHash) {
+        statut.value = CloudSyncStatut(
+          etat: CloudSyncEtat.aJour,
+          derniereSync: derniere,
+          message: 'Données synchronisées.',
+        );
+      } else {
+        statut.value = CloudSyncStatut(
+          etat: CloudSyncEtat.enAttente,
+          derniereSync: derniere,
+          message: 'Modifications en attente de synchronisation.',
+        );
+      }
+    } catch (_) {
+      statut.value = CloudSyncStatut(
+        etat: CloudSyncEtat.enAttente,
+        derniereSync: statut.value.derniereSync,
+        message: 'Modifications en attente de synchronisation.',
+      );
+    }
+  }
+
+  Future<CloudSyncResult> creerSauvegarde() async {
+    await init();
+    if (_client == null) {
+      return const CloudSyncResult(
+        ok: false,
+        donneesRecues: false,
+        message: 'Synchronisation indisponible.',
+      );
+    }
+    if (_busy) {
+      return const CloudSyncResult(
+        ok: false,
+        donneesRecues: false,
+        message: 'Synchronisation déjà en cours.',
+      );
+    }
+    _busy = true;
+    statut.value = statut.value.copyWith(
+      etat: CloudSyncEtat.synchronisation,
+      message: 'Sauvegarde en cours...',
+    );
+    try {
+      final local = await BackupService.instance.exporter();
+      final hash = _empreinte(local);
+      await _envoyer(local, hash, forcerHistorique: true);
+      _demarrerAuto();
+      _marquerAJour();
+      return const CloudSyncResult(
+        ok: true,
+        donneesRecues: false,
+        message: 'Sauvegarde cloud créée.',
+      );
+    } catch (e) {
+      debugPrint('CloudSync creerSauvegarde: $e');
+      statut.value = statut.value.copyWith(
+        etat: CloudSyncEtat.erreur,
+        message: 'Sauvegarde impossible.',
+      );
+      return const CloudSyncResult(
+        ok: false,
+        donneesRecues: false,
+        message: 'Sauvegarde impossible. Vérifiez la connexion.',
+      );
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<List<CloudSnapshot>> historique() async {
+    await init();
+    final client = _client;
+    if (client == null) return const [];
+    try {
+      final res = await client
+          .from(_table)
+          .select('id, payload, updated_at')
+          .like('id', 'salon_%')
+          .order('updated_at', ascending: false)
+          .timeout(_delaiReseau);
+      final liste = <CloudSnapshot>[];
+      for (final ligne in res) {
+        final payload = ligne['payload'];
+        if (payload is! String || payload.isEmpty) continue;
+        Map<String, dynamic>? data;
+        try {
+          final decode = jsonDecode(payload);
+          if (decode is Map<String, dynamic>) data = decode;
+        } catch (_) {}
+        if (data == null) continue;
+        liste.add(CloudSnapshot(
+          id: ligne['id'].toString(),
+          date: DateTime.tryParse(ligne['updated_at']?.toString() ?? '')
+              ?.toLocal(),
+          poids: _poids(data),
+          principal: false,
+        ));
+      }
+      return liste;
+    } catch (e) {
+      debugPrint('CloudSync historique: $e');
+      rethrow;
+    }
+  }
+
+  Future<CloudSyncResult> restaurerSnapshot(String id) async {
+    await init();
+    final client = _client;
+    if (client == null) {
+      return const CloudSyncResult(
+        ok: false,
+        donneesRecues: false,
+        message: 'Synchronisation indisponible.',
+      );
+    }
+    if (_busy) {
+      return const CloudSyncResult(
+        ok: false,
+        donneesRecues: false,
+        message: 'Synchronisation déjà en cours.',
+      );
+    }
+    _busy = true;
+    statut.value = statut.value.copyWith(
+      etat: CloudSyncEtat.synchronisation,
+      message: 'Restauration en cours...',
+    );
+    try {
+      final res = await client
+          .from(_table)
+          .select('payload, updated_at')
+          .eq('id', id)
+          .maybeSingle()
+          .timeout(_delaiReseau);
+      final payload = res?['payload'];
+      if (payload is! String || payload.isEmpty) {
+        statut.value = statut.value.copyWith(
+          etat: CloudSyncEtat.erreur,
+          message: 'Sauvegarde introuvable.',
+        );
+        return const CloudSyncResult(
+          ok: false,
+          donneesRecues: false,
+          message: 'Sauvegarde introuvable.',
+        );
+      }
+      final decode = jsonDecode(payload);
+      if (decode is! Map<String, dynamic>) {
+        throw const FormatException('Sauvegarde cloud illisible.');
+      }
+      final hash = _empreinte(decode);
+      final total = await BackupService.instance.restaurer(payload);
+      await _envoyer(decode, hash);
+      _demarrerAuto();
+      _marquerAJour();
+      return CloudSyncResult(
+        ok: true,
+        donneesRecues: true,
+        message: '$total élément(s) restauré(s) depuis la sauvegarde.',
+      );
+    } catch (e) {
+      debugPrint('CloudSync restaurerSnapshot: $e');
+      statut.value = statut.value.copyWith(
+        etat: CloudSyncEtat.erreur,
+        message: 'Restauration impossible.',
+      );
+      return const CloudSyncResult(
+        ok: false,
+        donneesRecues: false,
+        message: 'Restauration impossible. Vérifiez la connexion.',
+      );
+    } finally {
+      _busy = false;
     }
   }
 
@@ -197,7 +494,11 @@ class CloudSync {
     return (decode, res['updated_at']?.toString() ?? '');
   }
 
-  Future<void> _envoyer(Map<String, dynamic> data, String hash) async {
+  Future<void> _envoyer(
+    Map<String, dynamic> data,
+    String hash, {
+    bool forcerHistorique = false,
+  }) async {
     final client = _client;
     if (client == null) return;
     final maintenant = DateTime.now().toUtc().toIso8601String();
@@ -208,6 +509,70 @@ class CloudSync {
     }).timeout(_delaiReseau);
     await _setMeta(_metaHash, hash);
     await _setMeta(_metaUpdated, maintenant);
+    await _archiverHistorique(
+      data,
+      hash,
+      maintenant,
+      forcer: forcerHistorique,
+    );
+  }
+
+  Future<void> _archiverHistorique(
+    Map<String, dynamic> data,
+    String hash,
+    String maintenant, {
+    bool forcer = false,
+  }) async {
+    final client = _client;
+    if (client == null) return;
+    if (!forcer && hash == await _meta(_metaHistHash)) return;
+    final index = await _prochainIndexHistorique();
+    try {
+      await client.from(_table).upsert({
+        'id': '${_id}_$index',
+        'payload': jsonEncode(data),
+        'updated_at': maintenant,
+      }).timeout(_delaiReseau);
+      await _setMeta(_metaHistIndex, '$index');
+      await _setMeta(_metaHistHash, hash);
+    } catch (e) {
+      debugPrint('CloudSync historique: $e');
+    }
+  }
+
+  Future<int> _prochainIndexHistorique() async {
+    final client = _client;
+    if (client == null) return 1;
+    try {
+      final res = await client
+          .from(_table)
+          .select('id, updated_at')
+          .like('id', 'salon_%')
+          .timeout(_delaiReseau);
+      final utilises = <int, DateTime>{};
+      for (final ligne in res) {
+        final id = ligne['id']?.toString() ?? '';
+        final index = int.tryParse(id.replaceFirst('${_id}_', ''));
+        if (index == null || index < 1 || index > _maxHistorique) continue;
+        final date = DateTime.tryParse(ligne['updated_at']?.toString() ?? '');
+        utilises[index] = date ?? DateTime.fromMillisecondsSinceEpoch(0);
+      }
+      for (var i = 1; i <= _maxHistorique; i++) {
+        if (!utilises.containsKey(i)) return i;
+      }
+      var plusAncien = 1;
+      var datePlusAncienne = utilises[1]!;
+      for (var i = 2; i <= _maxHistorique; i++) {
+        if (utilises[i]!.isBefore(datePlusAncienne)) {
+          datePlusAncienne = utilises[i]!;
+          plusAncien = i;
+        }
+      }
+      return plusAncien;
+    } catch (_) {
+      final actuel = int.tryParse(await _meta(_metaHistIndex) ?? '') ?? 0;
+      return actuel % _maxHistorique + 1;
+    }
   }
 
   Future<String?> _meta(String cle) async {

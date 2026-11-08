@@ -30,6 +30,8 @@ class _StatsScreenState extends State<StatsScreen> {
   int _nbVentesMois = 0;
   double _valeurStockAchat = 0;
   double _margeVendue = 0;
+  double _depensesMois = 0;
+  double _beneficeMois = 0;
   List<Map<String, dynamic>> _bestSellers = [];
   List<Perruque> _alertes = [];
   List<Map<String, dynamic>> _ventes = [];
@@ -66,6 +68,9 @@ class _StatsScreenState extends State<StatsScreen> {
         FROM ventes v JOIN perruques p ON p.id = v.perruqueId
         WHERE v.dateVente >= ?
       ''', [debutMois]);
+      final depenses = await db.rawQuery(
+          'SELECT COALESCE(SUM(montant),0) AS total FROM depenses WHERE date >= ?',
+          [debutMois]);
       final best = await db.rawQuery('''
         SELECT p.nom, SUM(v.quantite) AS totalVendus, SUM(v.montant) AS ca
         FROM ventes v JOIN perruques p ON p.id = v.perruqueId
@@ -105,6 +110,8 @@ class _StatsScreenState extends State<StatsScreen> {
         _nbVentesMois = (mois.first['n'] as num).toInt();
         _valeurStockAchat = (stock.first['achat'] as num).toDouble();
         _margeVendue = (marge.first['marge'] as num).toDouble();
+        _depensesMois = (depenses.first['total'] as num).toDouble();
+        _beneficeMois = _margeVendue - _depensesMois;
         _bestSellers = best;
         _alertes =
             perruques.map(Perruque.fromMap).where((p) => p.stockBas).toList();
@@ -301,6 +308,22 @@ class _StatsScreenState extends State<StatsScreen> {
               value: formatFcfa(_margeVendue),
               accent: AppColors.gold,
               background: AppColors.goldSoft,
+            )),
+            element(StatCard(
+              icon: Icons.receipt_long_outlined,
+              label: 'Dépenses (mois)',
+              value: formatFcfa(_depensesMois),
+              accent: AppColors.danger,
+              background: AppColors.dangerSoft,
+            )),
+            element(StatCard(
+              icon: Icons.savings_outlined,
+              label: 'Bénéfice net (mois)',
+              value: formatFcfa(_beneficeMois),
+              accent: _beneficeMois >= 0 ? AppColors.success : AppColors.danger,
+              background: _beneficeMois >= 0
+                  ? AppColors.successSoft
+                  : AppColors.dangerSoft,
             )),
           ],
         );

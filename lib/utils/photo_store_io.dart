@@ -3,7 +3,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as pth;
 import 'package:path_provider/path_provider.dart';
 
+import '../services/photo_cloud_service.dart';
+
 Future<String> savePickedPhoto(XFile picked) async {
+  final cloud = await PhotoCloudService.envoyer(picked);
+  if (cloud != null) return cloud;
   final dir = await getApplicationDocumentsDirectory();
   final dossier = Directory('${dir.path}${Platform.pathSeparator}photos');
   if (!await dossier.exists()) {
@@ -18,6 +22,10 @@ Future<String> savePickedPhoto(XFile picked) async {
 
 Future<void> deletePhoto(String? chemin) async {
   if (chemin == null || chemin.isEmpty || chemin.startsWith('data:')) return;
+  if (PhotoCloudService.estPhotoCloud(chemin)) {
+    await PhotoCloudService.supprimer(chemin);
+    return;
+  }
   try {
     final fichier = File(chemin);
     if (await fichier.exists()) await fichier.delete();

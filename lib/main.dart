@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'auth/auth_provider.dart';
+import 'auth/changer_mot_de_passe_screen.dart';
 import 'auth/login_screen.dart';
 import 'navigation/app_section.dart';
 import 'screens/admin/gestion_users.dart';
@@ -22,6 +23,7 @@ void main() async {
   await CloudSync.instance.synchroniser();
   final auth = AuthProvider();
   await auth.creerPremierAdmin();
+  await auth.chargerSession();
   runApp(MyApp(auth: auth));
 }
 
@@ -61,7 +63,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         title: 'Rach Coiffure',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
-        home: const LoginScreen(),
+        home: widget.auth.isLoggedIn
+            ? (widget.auth.doitChangerMotDePasse
+                ? const ChangerMotDePasseScreen(obligatoire: true)
+                : const DashboardScreen())
+            : const LoginScreen(),
         routes: {
           AppSection.dashboard.route: (_) => const DashboardScreen(),
           AppSection.stock.route: (_) => const StockScreen(),
