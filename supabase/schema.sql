@@ -218,3 +218,20 @@ begin
   end loop;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Synchronisation multi-appareils : instantané JSON partagé
+-- Le telephone envoie sa base, les autres la recuperent au demarrage.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.cloud_sync (
+  id text primary key,
+  payload text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.cloud_sync enable row level security;
+drop policy if exists cloud_sync_acces on public.cloud_sync;
+create policy cloud_sync_acces on public.cloud_sync
+  for all to anon, authenticated
+  using (true) with check (true);

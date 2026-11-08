@@ -4,6 +4,7 @@ import '../../auth/auth_provider.dart';
 import '../../database/db_helper.dart';
 import '../../models/permission.dart';
 import '../../navigation/app_section.dart';
+import '../../services/cloud_sync.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format.dart';
 import '../../widgets/app_shell.dart';
@@ -29,6 +30,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _stockBas = 0;
   int _rdvJour = 0;
   bool _loading = true;
+  bool _syncEnCours = false;
 
   @override
   void initState() {
@@ -79,6 +81,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         MaterialPageRoute(builder: (_) => ecran),
       );
 
+  Future<void> _synchroniser() async {
+    if (_syncEnCours) return;
+    setState(() => _syncEnCours = true);
+    final res = await CloudSync.instance.synchroniser(force: true);
+    if (!mounted) return;
+    setState(() => _syncEnCours = false);
+    showAppSnack(
+      context,
+      res.message,
+      type: res.ok ? AppSnackType.success : AppSnackType.error,
+    );
+    if (res.donneesRecues) await _charger();
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -94,6 +110,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       section: AppSection.dashboard,
       title: 'Tableau de bord',
       actions: [
+        IconButton(
+          tooltip: 'Synchroniser avec le cloud',
+          icon: _syncEnCours
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.cloud_sync_outlined),
+          onPressed: _synchroniser,
+        ),
         if (_stockBas > 0)
           IconButton(
             tooltip: 'Alerte stock bas ($_stockBas)',
@@ -268,7 +295,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? 4
             : width >= 680
                 ? 3
-                : width >= 420
+                : width >= 320
                     ? 2
                     : 1;
 

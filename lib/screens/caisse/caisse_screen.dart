@@ -11,6 +11,7 @@ import '../../models/perruque.dart';
 import '../../models/vente.dart';
 import '../../navigation/app_section.dart';
 import '../../services/caisse_service.dart';
+import '../../services/cloud_sync.dart';
 import '../../services/parametres_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/format.dart';
@@ -140,6 +141,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
     final vente = await ouvrirEncaissement(context);
     if (vente == null || !mounted) return;
 
+    CloudSync.instance.pushMaintenant();
     await _charger();
     if (!mounted) return;
     showAppSnack(

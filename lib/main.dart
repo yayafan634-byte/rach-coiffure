@@ -11,23 +11,52 @@ import 'screens/dashboard/dashboard_screen.dart';
 import 'screens/rdv/rdv_screen.dart';
 import 'screens/stats/stats_screen.dart';
 import 'screens/stock/stock_screen.dart';
+import 'services/cloud_sync.dart';
 import 'theme/app_theme.dart';
+import 'utils/son.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SonService.instance.initialiser();
+  await CloudSync.instance.init();
+  await CloudSync.instance.synchroniser();
   final auth = AuthProvider();
   await auth.creerPremierAdmin();
   runApp(MyApp(auth: auth));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final AuthProvider auth;
   const MyApp({super.key, required this.auth});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      CloudSync.instance.pushMaintenant();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
-      value: auth,
+      value: widget.auth,
       child: MaterialApp(
         title: 'Rach Coiffure',
         debugShowCheckedModeBanner: false,

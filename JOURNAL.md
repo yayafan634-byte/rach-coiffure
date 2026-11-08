@@ -149,3 +149,21 @@ Fichier tenu à jour par l'assistant à chaque session (continuité entre les co
 - Tests modèles ajoutés (`test/models_test.dart`).
 
 **Reste à faire manuellement :** révoquer/rotationner la clé `service_role` dans Supabase puis supprimer `cle.txt`, configurer la signature release Android, valider la migration DB sur une copie de données réelles.
+
+## Session 8 - 08/11/2026 : son, synchro multi-téléphones et grille du jour
+
+**Réalisé :**
+- Son d'encaissement : `SonService.initialiser()` précharge `assets/sounds/succes.wav` au démarrage, puis `succes()` rejoue immédiatement sans recharger l'asset (fallback `play` si besoin).
+- Synchronisation multi-appareils Supabase :
+  - `lib/config/supabase_config.dart` (URL + clé publishable, surchargeables par `--dart-define`).
+  - `lib/services/cloud_sync.dart` : instantané JSON de la base locale stocké dans `public.cloud_sync`, envoi automatique toutes les 20 s et après chaque encaissement, réception au démarrage / via le bouton cloud / à la reprise.
+  - `main.dart` initialise le son puis la synchro avant la connexion, et pousse les données à la mise en pause.
+  - Icône « Synchroniser avec le cloud » ajoutée sur le tableau de bord.
+  - `AndroidManifest.xml` : permission `INTERNET` ajoutée pour les builds release.
+  - `supabase/schema.sql` : table `cloud_sync` + politique RLS `anon`/`authenticated`. **À exécuter une fois dans Supabase > SQL Editor.**
+- Accueil du jour : la grille « Aperçu du jour » passe en 2 colonnes sur téléphone (seuil 320 px au lieu de 420 px).
+- `file_picker` retiré du `pubspec.yaml` : dépendance inutilisée qui empêchait la compilation APK avec AGP 9 / Kotlin intégré.
+
+**Vérifications :** `flutter analyze` 0 issue, `flutter test` OK (7 tests), `flutter build web --release` OK, `flutter build apk --release` OK (63,3 Mo). APK : `RachCoiffure-1.0.0-sync.apk`.
+
+**Reste à faire :** coller/exécuter `supabase/schema.sql` dans Supabase, puis tester deux téléphones (saisie + encaissement sur l'un, réouverture ou bouton cloud sur l'autre).
