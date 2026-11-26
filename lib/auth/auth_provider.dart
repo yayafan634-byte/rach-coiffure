@@ -255,20 +255,6 @@ class AuthProvider extends ChangeNotifier {
     final res =
         await db.query('users', where: 'role = ?', whereArgs: ['admin']);
     if (res.isNotEmpty) {
-      // ===== TEMPORAIRE : réinitialisation du mot de passe admin =====
-      // À SUPPRIMER après la première connexion réussie.
-      // Connexion avec le numéro du compte admin et le mot de passe Temp12345
-      await db.update(
-        'users',
-        {
-          'motDePasseHash': hashPassword('Temp12345'),
-          'doitChangerMotDePasse': 1,
-        },
-        where: 'role = ?',
-        whereArgs: ['admin'],
-      );
-      // ===== FIN DU BLOC TEMPORAIRE =====
-
       // Les installations existantes créées avec le mot de passe par défaut
       // doivent le changer dès la prochaine connexion.
       for (final row in res) {
